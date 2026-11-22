@@ -65,6 +65,7 @@ skip_covered = true
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.170.17",
     "mypy>=2.4.1",
     "pyarrow-stubs>=20.0.0.20260819",
     "pytest>=9.2.0",
