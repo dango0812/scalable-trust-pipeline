@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    # Linux and Windows both run so platform-dependent bytes (line endings,
+    # paths, hashes) are caught before they reach main.
+    name: python (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      # setup-uv publishes no floating major tag (v10), so pin the exact release.
+      - uses: astral-sh/setup-uv@v10.4.0
+      - name: Install locked dependencies
+        run: uv sync --locked
+      - name: Lint
+        run: uv run ruff check
+      - name: Format
+        run: uv run ruff format --check
+      - name: Type check
+        run: uv run mypy
+      - name: Test
+        run: uv run pytest
+
+  conventions:
+    # Server-side copy of the local hooks: hooks can be skipped with --no-verify, CI cannot.
+    name: conventions
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      HUSKY: "0"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install commitlint
+        run: npm ci
+      - name: Branch name
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: sh scripts/check-branch-name.sh "$HEAD_REF"
+      - name: Commit messages
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: npx commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose

@@ -1,4 +1,2 @@
 # scalable-trust-pipeline
-
-신뢰할 수 있는 데이터로 모델을 학습시키기 위한 학습 데이터 파이프라인(데이터센터 구조)입니다.
-데이터 1건으로 시작해, 같은 구조 그대로 수십억~수조 건까지 확장하는 것을 목표로 합니다.
+A training-data pipeline for models that learn only from trustworthy data.
