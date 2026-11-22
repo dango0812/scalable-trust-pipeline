@@ -5,14 +5,16 @@ and on an object store (``s3://bucket/lake/<key>``) later. Partitions use the Hi
 ``key=value`` convention that pyarrow, Spark, DuckDB and Trino read natively.
 
     bronze/captures/source=<domain>/date=<yyyy-mm-dd>/part-<n>.parquet
-    silver/documents/source=<domain>/part-<n>.parquet
-    silver/trust/source=<domain>/part-<n>.parquet
+    silver/documents/source=<domain>/date=<yyyy-mm-dd>/part-<n>.parquet
+    silver/trust/source=<domain>/date=<yyyy-mm-dd>/part-<n>.parquet
     gold/...                                   training shards (added by a later layer)
 
-Scaling is by adding shards, never by growing a file: one record is one row in part-00000,
+Scaling is by adding parts, never by growing a file: one record is one row in part-00000,
 a trillion records are many parts across many partitions, read and written in parallel.
-A silver documents part and its trust part share partition and part number, so the two
-files hold the same documents in the same row order and join without a shuffle.
+Each silver part mirrors exactly one bronze part (same source, day and part number), so
+refining a bronze part is idempotent: a re-run rewrites only that part's silver files.
+A documents part and its trust part hold the same documents in the same row order, so the
+two join without a shuffle.
 """
 
 import re
@@ -20,6 +22,10 @@ from datetime import date
 from enum import StrEnum
 
 _PARTITION_VALUE = re.compile(r"[a-z0-9]+(?:[.-][a-z0-9]+)*")
+_BRONZE_KEY = re.compile(
+    r"bronze/captures/source=(?P<source>[^/]+)/date=(?P<day>\d{4}-\d{2}-\d{2})"
+    r"/part-(?P<shard>\d{5,})\.parquet"
+)
 
 
 class Layer(StrEnum):
@@ -40,21 +46,26 @@ def _partition(key: str, value: str) -> str:
     return f"{key}={value}"
 
 
+def _key(layer: Layer, table: str, source: str, day: date, shard: int) -> str:
+    partitions = [_partition("source", source), _partition("date", day.isoformat())]
+    return "/".join([layer, table, *partitions, part_name(shard)])
+
+
 def bronze_captures_key(source: str, day: date, shard: int) -> str:
-    return "/".join(
-        [
-            Layer.BRONZE,
-            "captures",
-            _partition("source", source),
-            _partition("date", day.isoformat()),
-            part_name(shard),
-        ]
-    )
+    return _key(Layer.BRONZE, "captures", source, day, shard)
 
 
-def silver_documents_key(source: str, shard: int) -> str:
-    return "/".join([Layer.SILVER, "documents", _partition("source", source), part_name(shard)])
+def silver_documents_key(source: str, day: date, shard: int) -> str:
+    return _key(Layer.SILVER, "documents", source, day, shard)
 
 
-def silver_trust_key(source: str, shard: int) -> str:
-    return "/".join([Layer.SILVER, "trust", _partition("source", source), part_name(shard)])
+def silver_trust_key(source: str, day: date, shard: int) -> str:
+    return _key(Layer.SILVER, "trust", source, day, shard)
+
+
+def parse_bronze_captures_key(key: str) -> tuple[str, date, int]:
+    """Split a bronze captures key into (source, day, shard)."""
+    match = _BRONZE_KEY.fullmatch(key)
+    if match is None:
+        raise ValueError(f"not a bronze captures key: {key!r}")
+    return match["source"], date.fromisoformat(match["day"]), int(match["shard"])

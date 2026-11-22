@@ -1,0 +1,16 @@
+# Source registry: which sources the pipeline trusts, and why.
+#
+# The trust tier of a document comes from this file, never from the document itself.
+# Changes are reviewed like code, and `version` is written on every silver.trust row,
+# so each training decision can be traced back to the policy that made it.
+#
+# A capture matches the rule with the longest `uri_prefix` that covers its source URI on a
+# path boundary. Captures that match no rule are refined with tier "unverified".
+version = "2026-11-22"
+
+[[source]]
+uri_prefix = "https://github.com/dango0812"
+publisher = "dango0812"
+license = "NOASSERTION" # SPDX: the submitter stated no license terms
+tier = "primary"
+reason = "first-party statement by the owner of the GitHub account it describes"

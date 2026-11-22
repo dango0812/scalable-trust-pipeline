@@ -44,8 +44,8 @@ def test_one_document_is_stored_as_capture_document_and_trust(tmp_path: Path) ->
     )
 
     capture_key = bronze_captures_key(SOURCE, FETCHED_AT.date(), 0)
-    doc_key = silver_documents_key(SOURCE, 0)
-    trust_key = silver_trust_key(SOURCE, 0)
+    doc_key = silver_documents_key(SOURCE, FETCHED_AT.date(), 0)
+    trust_key = silver_trust_key(SOURCE, FETCHED_AT.date(), 0)
     write_table(to_table([capture], RawCapture), tmp_path, capture_key)
     write_table(to_table([doc], Document), tmp_path, doc_key)
     write_table(to_table([trust], TrustRecord), tmp_path, trust_key)
