@@ -1,11 +1,15 @@
 # Source registry: which sources the pipeline trusts, and why.
 #
-# The trust tier of a document comes from this file, never from the document itself.
-# Changes are reviewed like code, and `version` is written on every silver.trust row,
-# so each training decision can be traced back to the policy that made it.
+# The trust tier of a capture comes from this file, never from the document itself.
+# Changes are reviewed like code. The SHA-256 of this file's canonical form is the policy
+# id written on every silver.trust row, and the lake keeps a copy under _policies/, so each
+# training decision can be traced back to the exact rules that made it.
 #
-# A capture matches the rule with the longest `uri_prefix` that covers its source URI on a
-# path boundary. Captures that match no rule are refined with tier "unverified".
+# A capture matches the rule with the most specific uri_prefix that covers its canonical
+# source URI (same scheme, host and port; the rule's path segments are a prefix of the
+# URI's). A rule applies only to the acquisition methods in `accepts` (default:
+# ["http_fetch"], captures this pipeline fetched itself). Captures that match no rule are
+# refined with tier "unverified".
 version = "2026-11-22"
 
 [[source]]
@@ -14,3 +18,5 @@ publisher = "dango0812"
 license = "NOASSERTION" # SPDX: the submitter stated no license terms
 tier = "primary"
 reason = "first-party statement by the owner of the GitHub account it describes"
+# The statement was handed in by the account owner, not fetched from the page.
+accepts = ["submission"]
