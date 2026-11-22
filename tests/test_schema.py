@@ -44,7 +44,8 @@ def test_content_and_trust_metadata_live_in_separate_tables() -> None:
     trust_only = {"source_uri", "license", "tier", "tier_reason", "policy_version"}
     assert trust_only.isdisjoint(SILVER_DOCUMENTS.names)
     assert {"text", "raw"}.isdisjoint(SILVER_TRUST.names)
-    assert "doc_id" in SILVER_DOCUMENTS.names and "doc_id" in SILVER_TRUST.names
+    assert "doc_id" in SILVER_DOCUMENTS.names
+    assert "doc_id" in SILVER_TRUST.names
 
 
 def test_schemas_carry_table_name_and_version() -> None:
@@ -68,10 +69,20 @@ def test_document_text_is_canonicalized() -> None:
         Document(doc.doc_id, doc.capture_id, "line one\r\nline two", None)
 
 
+def test_malformed_and_mismatched_ids_are_rejected() -> None:
+    capture_id = content_id(b"raw")
+    with pytest.raises(ValueError, match="must look like sha256"):
+        Document("md5:abc", capture_id, "text", None)
+    with pytest.raises(ValueError, match="doc_id does not match the text"):
+        Document(content_id(b"other text"), capture_id, "text", None)
+
+
 def test_naive_timestamps_are_rejected() -> None:
     with pytest.raises(ValueError, match="timezone-aware"):
         RawCapture.from_bytes(
-            b"x", source_uri="https://a.example/x", fetched_at=datetime(2026, 11, 22)
+            b"x",
+            source_uri="https://a.example/x",
+            fetched_at=datetime(2026, 11, 22),  # noqa: DTZ001 - naive on purpose
         )
 
 

@@ -75,7 +75,12 @@ def test_decoding_follows_the_declared_charset_and_is_strict() -> None:
 
 @pytest.mark.parametrize(
     ("text", "lang"),
-    [("대한민국의 개발자", "ko"), ("A developer from South Korea.", "en"), ("12345", None)],
+    [
+        ("대한민국의 개발자", "ko"),
+        ("A developer from South Korea.", "en"),
+        ("12345", None),
+        ("Привет, мир", None),
+    ],
 )
 def test_detect_lang_by_dominant_script(text: str, lang: str | None) -> None:
     assert detect_lang(text) == lang

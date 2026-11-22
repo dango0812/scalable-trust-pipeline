@@ -6,7 +6,6 @@ duration and stage-specific counts), so runs can be compared and later collected
 
 import argparse
 import json
-import sys
 import time
 from collections import Counter
 from collections.abc import Sequence
@@ -90,7 +89,3 @@ def main(argv: Sequence[str] | None = None) -> int:
     report["duration_ms"] = round((time.perf_counter() - started) * 1000, 3)
     print(json.dumps(report, ensure_ascii=False))
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

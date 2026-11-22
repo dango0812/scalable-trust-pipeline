@@ -37,7 +37,8 @@ def test_the_most_specific_rule_wins() -> None:
         ),
     )
     match = registry.match("https://example.org/standards/spec-1")
-    assert match is not None and match.tier is TrustTier.PRIMARY
+    assert match is not None
+    assert match.tier is TrustTier.PRIMARY
 
 
 def test_unknown_tiers_in_the_registry_are_rejected(tmp_path: Path) -> None:

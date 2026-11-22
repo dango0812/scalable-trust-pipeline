@@ -10,7 +10,6 @@ Write settings, chosen for large corpora rather than for one record:
   (On object stores the equivalent guarantee comes from single-PUT uploads.)
 """
 
-import os
 import uuid
 from pathlib import Path
 from typing import Final
@@ -38,7 +37,7 @@ def write_table(table: pa.Table, root: Path, key: str) -> Path:
             row_group_size=ROW_GROUP_ROWS,
             write_statistics=True,
         )
-        os.replace(tmp, path)
+        tmp.replace(path)
     finally:
         tmp.unlink(missing_ok=True)
     return path

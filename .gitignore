@@ -20,3 +20,8 @@ Thumbs.db
 
 # Local pipeline output (the lake root used by tests and the CLI)
 /lake/
+
+# Coverage reports
+.coverage
+.coverage.*
+htmlcov/

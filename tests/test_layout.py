@@ -40,7 +40,7 @@ def test_bronze_keys_parse_back_into_their_parts() -> None:
 
 def test_part_numbers_keep_growing_past_five_digits() -> None:
     assert part_name(123_456) == "part-123456.parquet"
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="shard must be >= 0"):
         part_name(-1)
 
 

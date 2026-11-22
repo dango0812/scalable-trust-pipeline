@@ -25,20 +25,49 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+select = [
+    "E", "F", "W", # pycodestyle, pyflakes
+    "I",           # import order
+    "UP",          # modern syntax for the target version
+    "B", "SIM", "C4", "PIE", "RET", "PERF", # likely bugs and needless complexity
+    "N",           # naming
+    "PT",          # pytest style
+    "PTH",         # pathlib over os.path
+    "DTZ",         # no naive datetimes: every timestamp in the lake is timezone-aware
+    "S",           # security (bandit)
+    "RUF",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"] # assert is how pytest tests are written
 
 [tool.mypy]
 strict = true
+warn_unreachable = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 files = ["src", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["-q"]
+addopts = ["-q", "--strict-markers", "--strict-config"]
+xfail_strict = true
+filterwarnings = ["error"] # a warning is a failure: deprecations are fixed, not ignored
+
+[tool.coverage.run]
+source = ["trustpipe"]
+branch = true
+
+[tool.coverage.report]
+# Every line and branch of the package is exercised by a test; CI fails below that.
+fail_under = 100
+show_missing = true
+skip_covered = true
 
 [dependency-groups]
 dev = [
     "mypy>=2.4.1",
     "pyarrow-stubs>=20.0.0.20260819",
     "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
     "ruff>=0.17.6",
 ]
