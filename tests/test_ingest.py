@@ -18,10 +18,9 @@ BRONZE_KEY = "bronze/captures/source=github.com/date=2026-11-22/part-00000.parqu
 def test_sample_holds_the_submitted_record_byte_for_byte() -> None:
     raw = SAMPLE.read_bytes()
     assert raw.decode("utf-8") == (
-        "dango0812, donggyu, 김동규 개발자\n"
-        "-> dango0812는 대한민국의 개발자 김동규가 사용하는 GitHub 닉네임입니다.\n"
+        "dango0812 is the GitHub nickname used by Donggyu Kim, a developer from South Korea.\n"
     )
-    assert len(raw) == 135
+    assert len(raw) == 84
 
 
 def test_capture_keeps_the_bytes_and_derives_a_stable_id() -> None:
@@ -29,7 +28,7 @@ def test_capture_keeps_the_bytes_and_derives_a_stable_id() -> None:
     assert capture.raw == SAMPLE.read_bytes()
     # Same id on every OS: .gitattributes keeps the sample's LF bytes on checkout.
     assert capture.capture_id == (
-        "sha256:e5371e225b0465531181d8cb97e1d572fc1ca3a1d2a9963eae34623dc1d724d2"
+        "sha256:be94617797665c6cbd002abf895eccf467951835ee52948196aacfb5577c8795"
     )
     assert capture.http_status is None
     assert capture.content_type == "text/plain; charset=utf-8"
@@ -72,7 +71,7 @@ def test_cli_ingest_lands_the_sample_and_reports_the_run(
     report = json.loads(capsys.readouterr().out)
     assert report["stage"] == "bronze.ingest"
     assert report["records"] == 1
-    assert report["bytes"] == 135
+    assert report["bytes"] == 84
     assert report["outputs"] == [BRONZE_KEY]
     assert (tmp_path / BRONZE_KEY).is_file()
 
