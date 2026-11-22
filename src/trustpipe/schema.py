@@ -1,120 +1,193 @@
-"""Record schemas for each lake layer.
+"""Record schemas of the lake tables (contract version 2).
 
-One source document becomes rows in three tables:
+One source document becomes rows in four tables:
 
-  bronze.captures   the raw bytes exactly as received, and how and when they were fetched
-  silver.documents  the canonical text training may use, linked to the capture it came from
-  silver.trust      trust metadata about that text: provenance, license, trust tier
+    bronze.captures   one row per capture event: the raw bytes exactly as received, where
+                      and when they came from, and how they were acquired
+    silver.documents  one row per capture that yielded text: the canonical text
+    silver.rejects    one row per capture that yielded no text, and why
+    silver.trust      one row per (capture, policy): the tier a versioned policy assigns
 
-Raw content and trust metadata are stored apart on purpose. Trust is re-evaluated far more
-often than text changes (a new policy, new evidence about a source), and with separate
-tables re-scoring rewrites only the small trust table, never terabytes of text. The two
-are joined by ``doc_id``.
+Grain and key of each table:
 
-The Arrow schemas are the storage contract; the frozen dataclasses mirror them field for
-field so code works with typed records instead of loose dicts.
+    bronze.captures   capture_id
+    silver.documents  capture_id   (doc_id is a content attribute shared by equal texts)
+    silver.rejects    capture_id
+    silver.trust      (capture_id, policy_id)
+
+Every bronze row ends up in exactly one of silver.documents and silver.rejects. Content and
+trust are stored apart: a new policy writes new trust rows under its own policy id and never
+rewrites text, and the decisions of older policies stay readable for audits.
+
+The Arrow schemas are the storage contract. Every field carries a permanent Parquet field
+id (fields are only ever appended, never reordered) and every table a version; within a
+version, only nullable columns may be added (see ``storage.read_table``). The frozen
+dataclasses mirror the schemas field for field and serve the record-at-a-time path (single
+records, tests); bulk stages work on Arrow batches directly.
 """
 
 # pa.Field is generic only in the type stubs; keep annotations unevaluated at runtime.
 from __future__ import annotations
 
 import dataclasses
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Self
 
 import pyarrow as pa
 
-from trustpipe.ids import canonical_text, content_id, document_id, is_content_id
+from trustpipe.ids import ID_BYTES, canonical_text
+from trustpipe.ids import capture_id as make_capture_id
+from trustpipe.ids import doc_id as make_doc_id
+from trustpipe.ids import payload_id as make_payload_id
+from trustpipe.uris import parse_uri
 
-SCHEMA_VERSION = "1"
-
+ID = pa.binary(ID_BYTES)
 _UTC_MICROS = pa.timestamp("us", tz="UTC")
+_POLICY_ID = re.compile(r"sha256:[0-9a-f]{64}")
 
 
-def _table_schema(name: str, fields: list[pa.Field[Any]]) -> pa.Schema:
+def _schema(name: str, version: int, fields: list[tuple[str, pa.DataType, bool]]) -> pa.Schema:
     # The table name and version travel inside every Parquet file's key-value metadata,
     # so a file found on its own still says what it is.
     return pa.schema(
-        fields, metadata={"trustpipe.table": name, "trustpipe.schema_version": SCHEMA_VERSION}
+        [
+            pa.field(column, kind, nullable=nullable, metadata={b"PARQUET:field_id": b"%d" % i})
+            for i, (column, kind, nullable) in enumerate(fields, start=1)
+        ],
+        metadata={b"trustpipe.table": name.encode(), b"trustpipe.schema_version": b"%d" % version},
     )
 
 
-BRONZE_CAPTURES = _table_schema(
+BRONZE_CAPTURES = _schema(
     "bronze.captures",
+    2,
     [
-        pa.field("capture_id", pa.string(), nullable=False),
-        pa.field("source_uri", pa.string(), nullable=False),
-        pa.field("fetched_at", _UTC_MICROS, nullable=False),
-        pa.field("http_status", pa.int16()),
-        pa.field("content_type", pa.string()),
-        pa.field("raw", pa.large_binary(), nullable=False),
+        ("capture_id", ID, False),
+        ("payload_id", ID, False),
+        ("source_uri", pa.string(), False),
+        ("host", pa.string(), False),
+        ("fetched_at", _UTC_MICROS, False),
+        ("acquisition", pa.string(), False),
+        ("http_status", pa.int16(), True),
+        ("content_type", pa.string(), True),
+        ("raw", pa.large_binary(), False),
     ],
 )
 
-SILVER_DOCUMENTS = _table_schema(
+SILVER_DOCUMENTS = _schema(
     "silver.documents",
+    2,
     [
-        pa.field("doc_id", pa.string(), nullable=False),
-        pa.field("capture_id", pa.string(), nullable=False),
-        pa.field("text", pa.large_string(), nullable=False),
-        pa.field("lang", pa.string()),
+        ("capture_id", ID, False),
+        ("doc_id", ID, False),
+        ("text", pa.large_string(), False),
+        ("script", pa.string(), True),
     ],
 )
 
-SILVER_TRUST = _table_schema(
-    "silver.trust",
+SILVER_REJECTS = _schema(
+    "silver.rejects",
+    1,
     [
-        pa.field("doc_id", pa.string(), nullable=False),
-        pa.field("source_uri", pa.string(), nullable=False),
-        pa.field("source_domain", pa.string(), nullable=False),
-        pa.field("publisher", pa.string()),
-        pa.field("license", pa.string(), nullable=False),
-        pa.field("retrieved_at", _UTC_MICROS, nullable=False),
-        pa.field("tier", pa.string(), nullable=False),
-        pa.field("tier_reason", pa.string(), nullable=False),
-        pa.field("policy_version", pa.string(), nullable=False),
+        ("capture_id", ID, False),
+        ("stage", pa.string(), False),
+        ("reason", pa.string(), False),
+        ("detail", pa.string(), False),
+    ],
+)
+
+SILVER_TRUST = _schema(
+    "silver.trust",
+    2,
+    [
+        ("capture_id", ID, False),
+        ("doc_id", ID, False),
+        ("host", pa.string(), False),
+        ("fetched_at", _UTC_MICROS, False),
+        ("policy_id", pa.string(), False),
+        ("rule_id", pa.string(), True),
+        ("tier", pa.string(), False),
+        ("tier_rank", pa.int8(), False),
+        ("license", pa.string(), False),
+        ("publisher", pa.string(), True),
+        ("reason", pa.string(), False),
     ],
 )
 
 
 class TrustTier(StrEnum):
-    """How much a source can be trusted, decided by policy and never by the document."""
+    """How far a source can be trusted, decided by policy and never by the document."""
 
     PRIMARY = "primary"  # the authoritative original: statute text, standards, official stats
     INSTITUTIONAL = "institutional"  # an accountable institution: agency, university, intl org
     REVIEWED = "reviewed"  # independently reviewed secondary work: peer-reviewed, edited
     UNVERIFIED = "unverified"  # no accountable publisher or review: blogs, forums, posts
 
+    @property
+    def rank(self) -> int:
+        """Order of the tiers, stored as tier_rank so range filters and statistics work."""
+        return _TIER_RANK[self]
 
-def _require_id(name: str, value: str) -> None:
-    if not is_content_id(value):
-        raise ValueError(f"{name} must look like sha256:<64 hex chars>, got {value!r}")
+
+_TIER_RANK = {
+    TrustTier.UNVERIFIED: 0,
+    TrustTier.REVIEWED: 1,
+    TrustTier.INSTITUTIONAL: 2,
+    TrustTier.PRIMARY: 3,
+}
 
 
-def _require_utc(name: str, value: datetime) -> None:
+class Acquisition(StrEnum):
+    """How the bytes of a capture were obtained; a trust rule states which it accepts."""
+
+    SUBMISSION = "submission"  # handed in as a file; the stated source URI is a claim
+    HTTP_FETCH = "http_fetch"  # fetched from source_uri by this pipeline
+    ARCHIVE_IMPORT = "archive_import"  # read from a third-party web archive
+
+
+def _require_id(name: str, value: object) -> None:
+    if not isinstance(value, bytes) or len(value) != ID_BYTES:
+        raise ValueError(f"{name} must be {ID_BYTES} raw bytes")
+
+
+def _utc(name: str, value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError(f"{name} must be timezone-aware, got naive {value!r}")
+    return value.astimezone(UTC)
 
 
 @dataclass(frozen=True, slots=True)
 class RawCapture:
-    """Bronze: bytes exactly as fetched. Never modified after being written."""
+    """bronze.captures: one capture event. Written once and never modified."""
 
-    capture_id: str
+    capture_id: bytes
+    payload_id: bytes
     source_uri: str
+    host: str
     fetched_at: datetime
+    acquisition: Acquisition
     http_status: int | None
     content_type: str | None
     raw: bytes
 
     def __post_init__(self) -> None:
         _require_id("capture_id", self.capture_id)
-        _require_utc("fetched_at", self.fetched_at)
-        if self.capture_id != content_id(self.raw):
-            raise ValueError("capture_id does not match the raw bytes")
+        _require_id("payload_id", self.payload_id)
+        object.__setattr__(self, "fetched_at", _utc("fetched_at", self.fetched_at))
+        object.__setattr__(self, "acquisition", Acquisition(self.acquisition))
+        uri = parse_uri(self.source_uri)
+        if str(uri) != self.source_uri:
+            raise ValueError(f"source_uri must be canonical: {str(uri)!r}, got {self.source_uri!r}")
+        if uri.host != self.host:
+            raise ValueError(f"host must be the host of source_uri ({uri.host!r})")
+        if self.payload_id != make_payload_id(self.raw):
+            raise ValueError("payload_id does not match the raw bytes")
+        if self.capture_id != make_capture_id(self.source_uri, self.fetched_at, self.payload_id):
+            raise ValueError("capture_id does not match source_uri, fetched_at and payload_id")
 
     @classmethod
     def from_bytes(
@@ -123,66 +196,110 @@ class RawCapture:
         *,
         source_uri: str,
         fetched_at: datetime,
+        acquisition: Acquisition,
         http_status: int | None = None,
         content_type: str | None = None,
     ) -> Self:
-        return cls(content_id(raw), source_uri, fetched_at, http_status, content_type, raw)
+        """Build a capture, storing the source URI in canonical form."""
+        uri = parse_uri(source_uri)
+        canonical = str(uri)
+        moment = _utc("fetched_at", fetched_at)
+        payload = make_payload_id(raw)
+        return cls(
+            make_capture_id(canonical, moment, payload),
+            payload,
+            canonical,
+            uri.host,
+            moment,
+            Acquisition(acquisition),
+            http_status,
+            content_type,
+            raw,
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class Document:
-    """Silver: canonical text plus the capture it was extracted from. No trust fields."""
+    """silver.documents: the canonical text one capture yielded. No trust fields."""
 
-    doc_id: str
-    capture_id: str
+    capture_id: bytes
+    doc_id: bytes
     text: str
-    lang: str | None
+    script: str | None
 
     def __post_init__(self) -> None:
-        _require_id("doc_id", self.doc_id)
         _require_id("capture_id", self.capture_id)
+        _require_id("doc_id", self.doc_id)
         if self.text != canonical_text(self.text):
             raise ValueError("text must be canonical; build documents with Document.from_text")
-        if self.doc_id != document_id(self.text):
+        if self.doc_id != make_doc_id(self.text):
             raise ValueError("doc_id does not match the text")
 
     @classmethod
-    def from_text(cls, text: str, *, capture_id: str, lang: str | None = None) -> Self:
+    def from_text(cls, text: str, *, capture_id: bytes, script: str | None = None) -> Self:
         canonical = canonical_text(text)
-        return cls(document_id(canonical), capture_id, canonical, lang)
+        return cls(capture_id, make_doc_id(canonical), canonical, script)
+
+
+@dataclass(frozen=True, slots=True)
+class Reject:
+    """silver.rejects: a capture that yielded no document, with a reason code and detail."""
+
+    capture_id: bytes
+    stage: str
+    reason: str
+    detail: str
+
+    def __post_init__(self) -> None:
+        _require_id("capture_id", self.capture_id)
+        if not self.reason:
+            raise ValueError("a reject needs a reason")
 
 
 @dataclass(frozen=True, slots=True)
 class TrustRecord:
-    """Silver: what we know about a document's origin and how far it can be trusted.
+    """silver.trust: what one policy decided about one capture, and why.
 
-    ``license`` holds an SPDX identifier, or ``LicenseRef-<name>`` for terms SPDX does not
-    list. ``tier_reason`` and ``policy_version`` record why and under which policy the tier
-    was assigned, so every training decision can be traced back and re-evaluated.
+    ``rule_id`` is the canonical prefix of the registry rule that decided the tier (None
+    when no rule applied); ``license`` is an SPDX identifier, ``NONE``, ``NOASSERTION`` or
+    ``LicenseRef-<name>``. With ``policy_id`` every training decision can be traced back to
+    the exact policy file that made it, which the lake keeps under ``_policies/``.
     """
 
-    doc_id: str
-    source_uri: str
-    source_domain: str
-    publisher: str | None
-    license: str
-    retrieved_at: datetime
+    capture_id: bytes
+    doc_id: bytes
+    host: str
+    fetched_at: datetime
+    policy_id: str
+    rule_id: str | None
     tier: TrustTier
-    tier_reason: str
-    policy_version: str
+    tier_rank: int
+    license: str
+    publisher: str | None
+    reason: str
 
     def __post_init__(self) -> None:
+        _require_id("capture_id", self.capture_id)
         _require_id("doc_id", self.doc_id)
-        _require_utc("retrieved_at", self.retrieved_at)
+        object.__setattr__(self, "fetched_at", _utc("fetched_at", self.fetched_at))
         # Accept the plain string read back from Parquet and normalize it to the enum.
         object.__setattr__(self, "tier", TrustTier(self.tier))
+        if self.tier_rank != self.tier.rank:
+            raise ValueError(
+                f"tier_rank of {self.tier!r} is {self.tier.rank}, got {self.tier_rank}"
+            )
+        if not _POLICY_ID.fullmatch(self.policy_id):
+            raise ValueError(
+                f"policy_id must look like sha256:<64 hex digits>, got {self.policy_id!r}"
+            )
 
 
-Record = RawCapture | Document | TrustRecord
+Record = RawCapture | Document | Reject | TrustRecord
 
 TABLE_SCHEMAS: dict[type[Any], pa.Schema] = {
     RawCapture: BRONZE_CAPTURES,
     Document: SILVER_DOCUMENTS,
+    Reject: SILVER_REJECTS,
     TrustRecord: SILVER_TRUST,
 }
 
