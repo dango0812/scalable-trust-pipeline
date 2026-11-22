@@ -92,3 +92,17 @@ def test_cli_rejects_a_capture_time_without_offset(tmp_path: Path) -> None:
                 "2026-11-22T13:13:00",
             ]
         )
+
+
+def test_capture_stores_the_canonical_spelling_of_its_source_uri() -> None:
+    capture = capture_file(
+        SAMPLE, source_uri="HTTPS://GitHub.com:443/dango0812#about", captured_at=CAPTURED_AT
+    )
+    assert capture.source_uri == SOURCE_URI
+
+
+def test_capture_rejects_a_source_uri_without_canonical_form() -> None:
+    with pytest.raises(ValueError, match="userinfo"):
+        capture_file(
+            SAMPLE, source_uri="https://github.com@evil.example/x", captured_at=CAPTURED_AT
+        )

@@ -10,7 +10,12 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from trustpipe.layout import parse_bronze_captures_key, silver_documents_key, silver_trust_key
-from trustpipe.registry import UNREGISTERED_LICENSE, UNREGISTERED_REASON, Registry
+from trustpipe.registry import (
+    UNPARSABLE_REASON,
+    UNREGISTERED_LICENSE,
+    UNREGISTERED_REASON,
+    Registry,
+)
 from trustpipe.schema import (
     BRONZE_CAPTURES,
     Document,
@@ -21,6 +26,7 @@ from trustpipe.schema import (
     to_table,
 )
 from trustpipe.storage import read_table, write_table
+from trustpipe.uris import SourceUri, parse_uri
 
 
 def decode(capture: RawCapture) -> str:
@@ -53,6 +59,23 @@ def detect_lang(text: str) -> str | None:
     return None
 
 
+def _parsed(source_uri: str) -> SourceUri | None:
+    try:
+        return parse_uri(source_uri)
+    except ValueError:
+        return None
+
+
+def _host(source_uri: str, uri: SourceUri | None) -> str:
+    # A capture whose URI has no canonical form still records the host it claims.
+    return uri.host if uri else (urlsplit(source_uri).hostname or "").lower()
+
+
+def _unmatched_reason(uri: SourceUri | None) -> str:
+    # Fail closed: a URI that cannot be canonicalised is never matched to a rule.
+    return UNREGISTERED_REASON if uri else UNPARSABLE_REASON
+
+
 def refine(
     captures: list[RawCapture], registry: Registry
 ) -> tuple[list[Document], list[TrustRecord]]:
@@ -61,18 +84,19 @@ def refine(
     for capture in captures:
         text = decode(capture)
         doc = Document.from_text(text, capture_id=capture.capture_id, lang=detect_lang(text))
-        rule = registry.match(capture.source_uri)
+        uri = _parsed(capture.source_uri)
+        rule = registry.match_uri(uri) if uri else None
         documents.append(doc)
         trust.append(
             TrustRecord(
                 doc_id=doc.doc_id,
                 source_uri=capture.source_uri,
-                source_domain=(urlsplit(capture.source_uri).hostname or "").lower(),
+                source_domain=_host(capture.source_uri, uri),
                 publisher=rule.publisher if rule else None,
                 license=rule.license if rule else UNREGISTERED_LICENSE,
                 retrieved_at=capture.fetched_at,
                 tier=rule.tier if rule else TrustTier.UNVERIFIED,
-                tier_reason=rule.reason if rule else UNREGISTERED_REASON,
+                tier_reason=rule.reason if rule else _unmatched_reason(uri),
                 policy_version=registry.version,
             )
         )
