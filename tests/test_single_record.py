@@ -57,9 +57,10 @@ def test_one_document_is_stored_as_capture_document_and_trust(tmp_path: Path) ->
     bronze = from_table(read_table(tmp_path, capture_key, schema=BRONZE_CAPTURES), RawCapture)
     silver = from_table(read_table(tmp_path, doc_key, schema=SILVER_DOCUMENTS), Document)
     trusted = from_table(read_table(tmp_path, trust_key, schema=SILVER_TRUST), TrustRecord)
-    assert bronze == [capture] and bronze[0].raw == RAW
-    assert silver == [doc] and silver[0].text == (
-        "Spec 1\n\nA conforming parser MUST reject invalid input.\n"
-    )
+    assert bronze == [capture]
+    assert bronze[0].raw == RAW
+    assert silver == [doc]
+    assert silver[0].text == ("Spec 1\n\nA conforming parser MUST reject invalid input.\n")
     assert trusted == [trust]
-    assert silver[0].doc_id == trusted[0].doc_id and silver[0].capture_id == capture.capture_id
+    assert silver[0].doc_id == trusted[0].doc_id
+    assert silver[0].capture_id == capture.capture_id

@@ -1,18 +1,10 @@
 # Block commits on main and on branches that break the naming convention.
 sh scripts/check-branch-name.sh || exit 1
 
-# Lint and format-check only the staged Python files; CI runs the full suite.
+# Lint and format-check only the staged Python files; pre-push and CI run the full suite.
 staged_py=$(git diff --cached --name-only --diff-filter=ACMR -- '*.py')
 [ -z "$staged_py" ] && exit 0
 
-if command -v uv >/dev/null 2>&1; then
-  uv_cmd="uv"
-elif python -m uv --version >/dev/null 2>&1; then
-  uv_cmd="python -m uv"
-else
-  echo "x uv is required for the pre-commit lint (https://docs.astral.sh/uv/)." >&2
-  exit 1
-fi
-
 # shellcheck disable=SC2086 # word splitting of the file list is intended
-$uv_cmd run --quiet ruff check $staged_py && $uv_cmd run --quiet ruff format --check $staged_py
+sh scripts/uv.sh run --quiet ruff check $staged_py &&
+  sh scripts/uv.sh run --quiet ruff format --check $staged_py

@@ -12,20 +12,18 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Third-party actions are pinned to a full commit SHA (the tag is in the comment), so a
+# moved tag can never change what runs here. Dependabot keeps both in step.
 jobs:
-  python:
-    # Linux and Windows both run so platform-dependent bytes (line endings,
-    # paths, hashes) are caught before they reach main.
-    name: python (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+  static:
+    name: static checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      # setup-uv publishes no floating major tag (v10), so pin the exact release.
-      - uses: astral-sh/setup-uv@v10.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
       - name: Install locked dependencies
         run: uv sync --locked
       - name: Lint
@@ -34,32 +32,45 @@ jobs:
         run: uv run ruff format --check
       - name: Type check
         run: uv run mypy
-      - name: Test
-        run: uv run pytest
 
-  conventions:
-    # Server-side copy of the local hooks: hooks can be skipped with --no-verify, CI cannot.
-    name: conventions
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+  test:
+    # Linux and Windows both run so platform-dependent bytes (line endings, paths,
+    # hashes) are caught before they reach main. The oldest and the newest supported
+    # Python both run so `requires-python` stays true.
+    name: test (${{ matrix.os }}, py${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.12", "3.14"]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     env:
-      HUSKY: "0"
+      UV_PYTHON: ${{ matrix.python }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-      - name: Install commitlint
-        run: npm ci
-      - name: Branch name
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+      - name: Install locked dependencies
+        run: uv sync --locked
+      - name: Test with coverage (fails under 100% lines and branches)
+        run: uv run pytest --cov
+
+  ci:
+    # The one check the main ruleset requires: it passes only when every job above
+    # passed, so jobs can be added or renamed without touching repository settings.
+    name: ci
+    if: always()
+    needs: [static, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every job to have succeeded
         env:
-          HEAD_REF: ${{ github.head_ref }}
-        run: sh scripts/check-branch-name.sh "$HEAD_REF"
-      - name: Commit messages
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: npx commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for result in $RESULTS; do
+            [ "$result" = "success" ] || exit 1
+          done
