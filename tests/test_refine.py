@@ -7,7 +7,7 @@ import pytest
 from trustpipe.cli import main
 from trustpipe.ingest import capture_file, land
 from trustpipe.refine import decode, detect_lang, refine, refine_part
-from trustpipe.registry import UNREGISTERED_REASON, Registry, load_registry
+from trustpipe.registry import UNPARSABLE_REASON, UNREGISTERED_REASON, Registry, load_registry
 from trustpipe.schema import (
     SILVER_DOCUMENTS,
     SILVER_TRUST,
@@ -56,6 +56,18 @@ def test_sources_outside_the_registry_are_unverified() -> None:
     assert trust[0].tier is TrustTier.UNVERIFIED
     assert trust[0].tier_reason == UNREGISTERED_REASON
     assert trust[0].license == "NOASSERTION"
+
+
+def test_a_capture_whose_uri_has_no_canonical_form_fails_closed() -> None:
+    capture = RawCapture.from_bytes(
+        b"Looks official",
+        source_uri="https://github.com@evil.example/dango0812",
+        fetched_at=CAPTURED_AT,
+    )
+    _, trust = refine([capture], REGISTRY)
+    assert trust[0].tier is TrustTier.UNVERIFIED
+    assert trust[0].tier_reason == UNPARSABLE_REASON
+    assert trust[0].source_domain == "evil.example"
 
 
 def test_decoding_follows_the_declared_charset_and_is_strict() -> None:
