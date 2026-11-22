@@ -5,7 +5,13 @@ description = "Training-data pipeline that carries trust metadata from a single 
 readme = "README.md"
 authors = [{ name = "dango0812" }]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pyarrow>=26.0.1",
+    "tzdata>=2026.6 ; sys_platform == 'win32'",
+]
+
+[project.scripts]
+trustpipe = "trustpipe.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.13.9,<0.14.0"]
@@ -32,6 +38,7 @@ addopts = ["-q"]
 [dependency-groups]
 dev = [
     "mypy>=2.4.1",
+    "pyarrow-stubs>=20.0.0.20260819",
     "pytest>=9.2.0",
     "ruff>=0.17.6",
 ]
