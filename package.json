@@ -2,6 +2,7 @@
   "name": "scalable-trust-pipeline-tooling",
   "private": true,
   "description": "Git hooks (husky) and commit message lint (commitlint) for this repository",
+  "packageManager": "pnpm@10.28.2",
   "scripts": {
     "prepare": "husky"
   },
