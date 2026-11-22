@@ -23,10 +23,8 @@ npm install   # installs the husky Git hooks
 ## Workflow
 
 - `main` changes only through pull requests. The local hooks refuse commits on `main` and
-  pushes to it; the GitHub ruleset in [`.github/rulesets/main.json`](.github/rulesets/main.json)
-  enforces the same on the server, since local hooks can be skipped with `--no-verify`.
-  It requires a pull request and green CI but zero approvals, because GitHub does not let
-  authors approve their own pull requests.
+  pushes to it, and the repository's GitHub ruleset enforces the same on the server,
+  because local hooks can be skipped with `--no-verify`.
 - Branch names: `<type>/<kebab-case-description>`, e.g. `feat/core-schema`, `ci/github-actions`.
 - Commits follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
   (`feat(schema): ...`), checked by commitlint locally and in CI.
