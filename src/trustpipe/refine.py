@@ -1,117 +1,212 @@
-"""Silver refinement: turn bronze captures into canonical documents and trust rows.
+"""Silver refinement: turn one bronze part into documents, rejects and trust rows.
 
-Each capture yields one silver.documents row (canonical text) and one silver.trust row
-(provenance, license and the tier the registry assigns), written in the same order so
-the two parts stay aligned row for row.
+Every capture of the part ends up in exactly one of two places:
+
+- it decodes to non-empty text: one silver.documents row (canonical text and script) and
+  one silver.trust row (what the policy decides about this capture), in the same order;
+- it does not: one silver.rejects row with a reason code, and the part carries on.
+
+So rows(bronze) == rows(documents) + rows(rejects) for every part, and one bad row never
+fails a whole part.
+
+Decoding follows the WHATWG Encoding Standard where it matters for determinism: a byte
+order mark overrides the declared charset and is removed, and only an allow-list of labels
+is accepted, each mapped to the codec the standard prescribes (for example "iso-8859-1" to
+windows-1252). The same bytes therefore decode the same way on every platform; any other
+label is rejected as unsupported_charset.
+
+The silver files are written first and the receipt last (receipts.py). The policy that
+decided the trust rows is stored under _policies/, so every row can be explained later.
 """
 
+import re
+from collections import Counter
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from email.message import Message
 from pathlib import Path
-from urllib.parse import urlsplit
 
-from trustpipe.layout import parse_bronze_captures_key, silver_documents_key, silver_trust_key
-from trustpipe.registry import (
-    UNPARSABLE_REASON,
-    UNREGISTERED_LICENSE,
-    UNREGISTERED_REASON,
-    Registry,
+from trustpipe import __version__
+from trustpipe.ids import CANONICAL_FORM, canonical_text
+from trustpipe.layout import (
+    parse_bronze_captures_key,
+    policy_key,
+    silver_documents_key,
+    silver_rejects_key,
+    silver_trust_key,
 )
+from trustpipe.receipts import Receipt, commit
+from trustpipe.registry import Registry
 from trustpipe.schema import (
     BRONZE_CAPTURES,
     Document,
     RawCapture,
+    Reject,
     TrustRecord,
-    TrustTier,
     from_table,
     to_table,
 )
-from trustpipe.storage import read_table, write_table
-from trustpipe.uris import SourceUri, parse_uri
+from trustpipe.storage import read_table, write_bytes, write_table
+from trustpipe.uris import parse_uri
+
+STAGE = "silver.refine"
+
+# WHATWG Encoding Standard labels this pipeline decodes, with the codec the standard maps
+# each one to. https://encoding.spec.whatwg.org/#names-and-labels
+_CODECS = {
+    "utf-8": "utf-8",
+    "utf8": "utf-8",
+    "unicode-1-1-utf-8": "utf-8",
+    "us-ascii": "cp1252",
+    "ascii": "cp1252",
+    "iso-8859-1": "cp1252",
+    "iso8859-1": "cp1252",
+    "latin1": "cp1252",
+    "l1": "cp1252",
+    "windows-1252": "cp1252",
+    "cp1252": "cp1252",
+    "euc-kr": "cp949",
+    "ks_c_5601-1987": "cp949",
+    "windows-949": "cp949",
+    "utf-16": "utf-16-le",
+    "utf-16le": "utf-16-le",
+    "utf-16be": "utf-16-be",
+}
+_BOMS = ((b"\xef\xbb\xbf", "utf-8"), (b"\xff\xfe", "utf-16-le"), (b"\xfe\xff", "utf-16-be"))
+
+_ASCII_LETTER = re.compile(r"[A-Za-z]")
+_LETTER = re.compile(r"[^\W\d_]")
+_HANGUL = re.compile("[가-힣ᄀ-ᇿ㄰-㆏]")
+
+
+class UnsupportedCharsetError(ValueError):
+    """The declared charset is not on the allow-list."""
 
 
 def decode(capture: RawCapture) -> str:
-    """Decode the payload with the charset its content type declares (UTF-8 if none).
-
-    Decoding is strict: bytes that do not match the declared charset are an error, not
-    something to paper over with replacement characters.
-    """
+    """Decode the payload strictly: a byte order mark first, then the declared charset."""
+    raw = capture.raw
+    for bom, bom_codec in _BOMS:
+        if raw.startswith(bom):
+            return raw[len(bom) :].decode(bom_codec)
     header = Message()
     header["content-type"] = capture.content_type or "text/plain"
-    charset = header.get_content_charset() or "utf-8"
-    return capture.raw.decode(charset)
+    label = header.get_content_charset() or "utf-8"
+    codec = _CODECS.get(label)
+    if codec is None:
+        raise UnsupportedCharsetError(f"charset {label!r} is not supported")
+    return raw.decode(codec)
 
 
-def detect_lang(text: str) -> str | None:
-    """Guess the dominant script: "ko" for Hangul, "en" for Latin, otherwise None.
+def detect_script(text: str) -> str | None:
+    """ISO 15924 code of the dominant script: "Hang", "Latn", or None for anything else.
 
-    A deliberate simplification: production pipelines use a trained language identifier
-    (fastText-style models); this keeps the single-record pipeline dependency-free.
+    A deliberate simplification, named for what it is: a script guess, not a language. A
+    production pipeline runs a trained language identifier (fastText-style) and stores its
+    label, score and model version. All counting happens in C (str.isascii, compiled
+    regular expressions), so the guess costs microseconds, not milliseconds, per document.
     """
-    letters = [ch for ch in text if ch.isalpha()]
-    if not letters:
+    if text.isascii():
+        return "Latn" if _ASCII_LETTER.search(text) else None
+    letters = len(_LETTER.findall(text))
+    if letters == 0:
         return None
-    hangul = sum("가" <= ch <= "힣" or "ᄀ" <= ch <= "ᇿ" for ch in letters)
-    latin = sum(ch.isascii() for ch in letters)
-    if hangul / len(letters) >= 0.3:
-        return "ko"
-    if latin / len(letters) >= 0.5:
-        return "en"
+    if len(_HANGUL.findall(text)) / letters >= 0.3:
+        return "Hang"
+    if len(_ASCII_LETTER.findall(text)) / letters >= 0.5:
+        return "Latn"
     return None
 
 
-def _parsed(source_uri: str) -> SourceUri | None:
+@dataclass(frozen=True, slots=True)
+class Refined:
+    documents: list[Document] = field(default_factory=list)
+    rejects: list[Reject] = field(default_factory=list)
+    trust: list[TrustRecord] = field(default_factory=list)
+
+
+def _text_or_reason(capture: RawCapture) -> tuple[str | None, str, str]:
     try:
-        return parse_uri(source_uri)
-    except ValueError:
-        return None
+        text = canonical_text(decode(capture))
+    except UnsupportedCharsetError as error:
+        return None, "unsupported_charset", str(error)
+    except UnicodeDecodeError as error:
+        return None, "undecodable", f"{error.encoding}: {error.reason} at byte {error.start}"
+    if not text.strip():
+        return None, "empty_text", "the payload holds no visible text"
+    return text, "", ""
 
 
-def _host(source_uri: str, uri: SourceUri | None) -> str:
-    # A capture whose URI has no canonical form still records the host it claims.
-    return uri.host if uri else (urlsplit(source_uri).hostname or "").lower()
-
-
-def _unmatched_reason(uri: SourceUri | None) -> str:
-    # Fail closed: a URI that cannot be canonicalised is never matched to a rule.
-    return UNREGISTERED_REASON if uri else UNPARSABLE_REASON
-
-
-def refine(
-    captures: list[RawCapture], registry: Registry
-) -> tuple[list[Document], list[TrustRecord]]:
-    documents: list[Document] = []
-    trust: list[TrustRecord] = []
+def refine(captures: Iterable[RawCapture], registry: Registry) -> Refined:
+    refined = Refined()
     for capture in captures:
-        text = decode(capture)
-        doc = Document.from_text(text, capture_id=capture.capture_id, lang=detect_lang(text))
-        uri = _parsed(capture.source_uri)
-        rule = registry.match_uri(uri) if uri else None
-        documents.append(doc)
-        trust.append(
+        text, reason, detail = _text_or_reason(capture)
+        if text is None:
+            refined.rejects.append(Reject(capture.capture_id, STAGE, reason, detail))
+            continue
+        document = Document.from_text(
+            text, capture_id=capture.capture_id, script=detect_script(text)
+        )
+        decision = registry.judge(parse_uri(capture.source_uri), capture.acquisition)
+        refined.documents.append(document)
+        refined.trust.append(
             TrustRecord(
-                doc_id=doc.doc_id,
-                source_uri=capture.source_uri,
-                source_domain=_host(capture.source_uri, uri),
-                publisher=rule.publisher if rule else None,
-                license=rule.license if rule else UNREGISTERED_LICENSE,
-                retrieved_at=capture.fetched_at,
-                tier=rule.tier if rule else TrustTier.UNVERIFIED,
-                tier_reason=rule.reason if rule else _unmatched_reason(uri),
-                policy_version=registry.version,
+                capture_id=capture.capture_id,
+                doc_id=document.doc_id,
+                host=capture.host,
+                fetched_at=capture.fetched_at,
+                policy_id=registry.policy_id,
+                rule_id=decision.rule.uri_prefix if decision.rule else None,
+                tier=decision.tier,
+                tier_rank=decision.tier.rank,
+                license=decision.license,
+                publisher=decision.rule.publisher if decision.rule else None,
+                reason=decision.reason,
             )
         )
-    return documents, trust
+    return refined
 
 
-def refine_part(
-    root: Path, bronze_key: str, registry: Registry
-) -> tuple[list[TrustRecord], str, str]:
-    """Refine one bronze part into its mirrored silver parts; return trust rows and keys."""
-    source, day, shard = parse_bronze_captures_key(bronze_key)
+def refine_part(root: Path, bronze_key: str, registry: Registry) -> Receipt:
+    """Refine one committed bronze part into its silver parts and commit them."""
+    day, part = parse_bronze_captures_key(bronze_key)
     captures = from_table(read_table(root, bronze_key, schema=BRONZE_CAPTURES), RawCapture)
-    documents, trust = refine(captures, registry)
-    documents_key = silver_documents_key(source, day, shard)
-    trust_key = silver_trust_key(source, day, shard)
-    write_table(to_table(documents, Document), root, documents_key)
-    write_table(to_table(trust, TrustRecord), root, trust_key)
-    return trust, documents_key, trust_key
+    refined = refine(captures, registry)
+    write_bytes(root, policy_key(registry.policy_id), registry.canonical_bytes(), create_only=True)
+    outputs = (
+        write_table(
+            to_table(refined.documents, Document),
+            root,
+            silver_documents_key(day, part),
+            create_only=False,
+        ),
+        write_table(
+            to_table(refined.rejects, Reject),
+            root,
+            silver_rejects_key(day, part),
+            create_only=False,
+        ),
+        write_table(
+            to_table(refined.trust, TrustRecord),
+            root,
+            silver_trust_key(registry.policy_id, day, part),
+            create_only=False,
+        ),
+    )
+    counters = Counter({"documents": len(refined.documents), "rejects": len(refined.rejects)})
+    counters.update(f"tier.{record.tier.value}" for record in refined.trust)
+    counters.update(f"reject.{reject.reason}" for reject in refined.rejects)
+    receipt = Receipt(
+        stage=STAGE,
+        part_id=part,
+        inputs=(bronze_key,),
+        outputs=outputs,
+        transform={
+            "trustpipe": __version__,
+            "canonical_form": CANONICAL_FORM,
+            "policy_id": registry.policy_id,
+        },
+        counters=dict(sorted(counters.items())),
+    )
+    commit(root, receipt, create_only=False)
+    return receipt

@@ -16,8 +16,6 @@ def test_python_dash_m_runs_the_cli(
         str(tmp_path),
         "ingest",
         str(SAMPLE),
-        "--source",
-        "github.com",
         "--source-uri",
         "https://github.com/dango0812",
     ]

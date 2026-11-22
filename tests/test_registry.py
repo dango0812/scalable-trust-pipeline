@@ -1,9 +1,20 @@
+import dataclasses
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
 
-from trustpipe.registry import Registry, RegistryError, SourceRule, load_registry
-from trustpipe.schema import TrustTier
+from trustpipe.registry import (
+    UNPARSABLE_REASON,
+    UNREGISTERED_REASON,
+    Registry,
+    RegistryError,
+    SourceRule,
+    load_registry,
+)
+from trustpipe.schema import Acquisition, TrustTier
+from trustpipe.uris import parse_uri
 
 CONFIG = Path(__file__).resolve().parents[1] / "config" / "sources.toml"
 
@@ -133,3 +144,64 @@ def test_publisher_is_optional_and_kept_as_text(tmp_path: Path) -> None:
     match = registry.match("https://a.example/x")
     assert match is not None
     assert match.publisher == "42"
+
+
+# --- acquisition rules, decisions and policy ids (contract v2) -----------------------------
+
+
+def test_rules_accept_only_fetched_captures_unless_told_otherwise() -> None:
+    assert rule("https://example.org").accepts == (Acquisition.HTTP_FETCH,)
+    configured = load_registry(CONFIG).match("https://github.com/dango0812")
+    assert configured is not None
+    assert configured.accepts == (Acquisition.SUBMISSION,)
+
+
+def test_judge_explains_every_outcome() -> None:
+    registry = load_registry(CONFIG)
+    trusted = parse_uri("https://github.com/dango0812")
+    accepted = registry.judge(trusted, Acquisition.SUBMISSION)
+    assert accepted.rule is not None
+    assert (accepted.tier, accepted.license) == (TrustTier.PRIMARY, "NOASSERTION")
+    refused = registry.judge(trusted, Acquisition.HTTP_FETCH)
+    assert (refused.rule, refused.tier) == (None, TrustTier.UNVERIFIED)
+    assert "accepts submission captures, not http_fetch" in refused.reason
+    unknown = registry.judge(parse_uri("https://blog.example.net/"), Acquisition.HTTP_FETCH)
+    assert (unknown.reason, unknown.license) == (UNREGISTERED_REASON, "NOASSERTION")
+    assert registry.judge(None, Acquisition.HTTP_FETCH).reason == UNPARSABLE_REASON
+
+
+@pytest.mark.parametrize(
+    ("accepts", "problem"),
+    [
+        ("accepts = []\n", "at least one method"),
+        ('accepts = ["telepathy"]\n', "unknown acquisition method"),
+        ('accepts = "submission"\n', "must be a list"),
+    ],
+)
+def test_malformed_acquisition_rules_are_rejected(
+    tmp_path: Path, accepts: str, problem: str
+) -> None:
+    with pytest.raises(RegistryError, match=problem):
+        load_registry(write_registry(tmp_path, 'version = "v1"\n[[source]]\n' + RULE + accepts))
+
+
+def test_the_policy_id_is_the_sha256_of_the_canonical_policy() -> None:
+    registry = load_registry(CONFIG)
+    assert registry.policy_id == "sha256:" + hashlib.sha256(registry.canonical_bytes()).hexdigest()
+    document = json.loads(registry.canonical_bytes())
+    assert document["format"] == "trustpipe.policy/1"
+    assert document["version"] == "2026-11-22"
+
+
+def test_equal_policies_share_an_id_and_any_change_makes_a_new_one() -> None:
+    a = rule("https://a.example")
+    b = rule("https://b.example")
+    base = Registry("v1", (a, b))
+    assert Registry("v1", (b, a)).policy_id == base.policy_id  # rule order does not matter
+    changed = [
+        Registry("v2", (a, b)),
+        Registry("v1", (a,)),
+        Registry("v1", (a, rule("https://b.example", TrustTier.REVIEWED))),
+        Registry("v1", (a, dataclasses.replace(b, accepts=(Acquisition.SUBMISSION,)))),
+    ]
+    assert len({base.policy_id, *(r.policy_id for r in changed)}) == 1 + len(changed)
