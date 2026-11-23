@@ -1,3 +1,4 @@
+#!/bin/sh
 # Changes reach main only through pull requests: refuse direct pushes to main,
 # and refuse pushing branches whose names break the convention.
 # git feeds one line per ref: <local ref> <local sha> <remote ref> <remote sha>

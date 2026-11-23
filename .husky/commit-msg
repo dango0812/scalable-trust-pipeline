@@ -1,2 +1,0 @@
-# Enforce Conventional Commits (rules: commitlint.config.mjs).
-pnpm exec commitlint --edit "$1"

@@ -1,3 +1,4 @@
+#!/bin/sh
 # Block commits on main and on branches that break the naming convention.
 sh scripts/check-branch-name.sh || exit 1
 

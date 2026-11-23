@@ -1,0 +1,3 @@
+#!/bin/sh
+# Enforce Conventional Commits (rules: scripts/commit_lint.py, also run in CI).
+sh scripts/uv.sh run --quiet python scripts/commit_lint.py --file "$1"

@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 # Validate a branch name against the repository convention:
 #   <type>/<kebab-case-description>   e.g. feat/core-schema, ci/github-actions
-# The types are the Conventional Commits types used by commitlint
-# (@commitlint/config-conventional), so a branch and its commits share one vocabulary.
+# The types are the Conventional Commits types of scripts/commit_lint.py, so a branch
+# and its commits share one vocabulary.
 #
 # Usage: scripts/check-branch-name.sh [branch]   (defaults to the current branch)
 
