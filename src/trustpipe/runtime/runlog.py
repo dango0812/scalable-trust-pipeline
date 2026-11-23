@@ -25,7 +25,7 @@ from types import TracebackType
 from typing import Any, Self
 
 from trustpipe import __version__
-from trustpipe.executor import RunSummary, TaskEvent
+from trustpipe.runtime.executor import RunSummary, TaskEvent
 
 RUNS_DIR = "_runs"
 

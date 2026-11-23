@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from trustpipe.executor import PartReport, run_stage
-from trustpipe.runlog import RunLog, new_run_id
+from trustpipe.runtime.executor import PartReport, run_stage
+from trustpipe.runtime.runlog import RunLog, new_run_id
 
 
 def ok_stage(key: str) -> PartReport:

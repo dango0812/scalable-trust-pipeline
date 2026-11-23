@@ -16,8 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Self
 
-from trustpipe.layout import receipt_key
-from trustpipe.storage import WrittenFile, lake_path, write_json
+from trustpipe.lake.layout import receipt_key
+from trustpipe.lake.storage import WrittenFile, lake_path, write_json
 
 FORMAT = "trustpipe.receipt/1"
 

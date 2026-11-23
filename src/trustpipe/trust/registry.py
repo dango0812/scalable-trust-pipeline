@@ -4,7 +4,7 @@ Trust is assigned by policy, not by content: a page that calls itself "official"
 nothing. The registry is plain TOML (comments allowed, reviewed like code), and its
 version is stamped on every trust row it produces.
 
-Rules and source URIs are compared in canonical form (``trustpipe.uris``) and by
+Rules and source URIs are compared in canonical form (``trustpipe.identity.uris``) and by
 structure, never as raw strings: scheme, host and port must be equal, and the rule's path
 segments must be a prefix of the URI's path segments. A query string never matters, and
 nothing that only looks like it is under a trusted path (``/trusted/../other``,
@@ -31,8 +31,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from trustpipe.schema import Acquisition, TrustTier
-from trustpipe.uris import SourceUri, canonical_uri, parse_uri
+from trustpipe.identity.uris import SourceUri, canonical_uri, parse_uri
+from trustpipe.lake.schema import Acquisition, TrustTier
 
 UNREGISTERED_LICENSE = "NOASSERTION"  # SPDX: no license information available
 UNREGISTERED_REASON = "source is not in the registry"

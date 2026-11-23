@@ -5,7 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from trustpipe.registry import (
+from trustpipe.identity.uris import parse_uri
+from trustpipe.lake.schema import Acquisition, TrustTier
+from trustpipe.trust.registry import (
     UNPARSABLE_REASON,
     UNREGISTERED_REASON,
     Registry,
@@ -13,8 +15,6 @@ from trustpipe.registry import (
     SourceRule,
     load_registry,
 )
-from trustpipe.schema import Acquisition, TrustTier
-from trustpipe.uris import parse_uri
 
 CONFIG = Path(__file__).resolve().parents[1] / "config" / "sources.toml"
 

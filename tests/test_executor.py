@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from trustpipe.executor import (
+from trustpipe.runtime.executor import (
     WORKER_DIED,
     PartReport,
     PermanentError,
@@ -306,7 +306,7 @@ def test_a_pool_found_broken_at_submit_time_is_replaced(monkeypatch: pytest.Monk
                 raise BrokenProcessPool("a worker died while the pool was idle")
             return super().submit(fn, *args, **kwargs)
 
-    monkeypatch.setattr("trustpipe.executor.ProcessPoolExecutor", FirstPoolIsBroken)
+    monkeypatch.setattr("trustpipe.runtime.executor.ProcessPoolExecutor", FirstPoolIsBroken)
     events: list[TaskEvent] = []
     summary = run_stage("demo", always_ok, ["a", "b"], workers=2, on_event=events.append)
     assert statuses(events) == [("a", "ok", 1), ("b", "ok", 1)]

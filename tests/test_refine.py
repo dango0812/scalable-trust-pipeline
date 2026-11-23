@@ -6,21 +6,28 @@ from pathlib import Path
 
 import pytest
 
+from trustpipe.bronze.ingest import capture_file, land
 from trustpipe.cli import main
-from trustpipe.ids import canonical_text
-from trustpipe.ingest import capture_file, land
-from trustpipe.layout import policy_key, silver_documents_key, silver_rejects_key, silver_trust_key
-from trustpipe.receipts import is_committed
-from trustpipe.refine import STAGE, decode, detect_script, refine, refine_part
-from trustpipe.registry import UNREGISTERED_REASON, load_registry
-from trustpipe.schema import (
+from trustpipe.identity.ids import canonical_text
+from trustpipe.lake.layout import (
+    policy_key,
+    silver_documents_key,
+    silver_rejects_key,
+    silver_trust_key,
+)
+from trustpipe.lake.receipts import is_committed
+from trustpipe.lake.schema import (
     SILVER_DOCUMENTS,
     SILVER_TRUST,
     Acquisition,
     RawCapture,
     TrustTier,
 )
-from trustpipe.storage import lake_path, read_table
+from trustpipe.lake.storage import lake_path, read_table
+from trustpipe.silver.decoding import decode
+from trustpipe.silver.refine import STAGE, refine, refine_part
+from trustpipe.silver.script import detect_script
+from trustpipe.trust.registry import UNREGISTERED_REASON, load_registry
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE = ROOT / "samples" / "dango0812-github-nickname.txt"

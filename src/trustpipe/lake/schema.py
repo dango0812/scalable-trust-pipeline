@@ -39,11 +39,11 @@ from typing import Any, Self
 
 import pyarrow as pa
 
-from trustpipe.ids import ID_BYTES, canonical_text
-from trustpipe.ids import capture_id as make_capture_id
-from trustpipe.ids import doc_id as make_doc_id
-from trustpipe.ids import payload_id as make_payload_id
-from trustpipe.uris import parse_uri
+from trustpipe.identity.ids import ID_BYTES, canonical_text
+from trustpipe.identity.ids import capture_id as make_capture_id
+from trustpipe.identity.ids import doc_id as make_doc_id
+from trustpipe.identity.ids import payload_id as make_payload_id
+from trustpipe.identity.uris import parse_uri
 
 ID = pa.binary(ID_BYTES)
 _UTC_MICROS = pa.timestamp("us", tz="UTC")

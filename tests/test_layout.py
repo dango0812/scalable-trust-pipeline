@@ -3,7 +3,7 @@ from datetime import date
 
 import pytest
 
-from trustpipe.layout import (
+from trustpipe.lake.layout import (
     bronze_captures_key,
     parse_bronze_captures_key,
     part_id,

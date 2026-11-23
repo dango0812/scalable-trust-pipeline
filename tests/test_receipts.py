@@ -2,14 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from trustpipe.receipts import (
+from trustpipe.lake.receipts import (
     Receipt,
     commit,
     committed_parts,
     is_committed,
     load_receipt,
 )
-from trustpipe.storage import WriteConflictError, WrittenFile, lake_path
+from trustpipe.lake.storage import WriteConflictError, WrittenFile, lake_path
 
 PART = "0123456789abcdef"
 

@@ -41,7 +41,7 @@ from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from trustpipe.metrics import peak_rss_bytes
+from trustpipe.runtime.metrics import peak_rss_bytes
 
 MAX_BACKOFF_SECONDS = 30.0
 WORKER_DIED = "worker process died while running this part"

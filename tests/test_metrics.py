@@ -2,7 +2,7 @@ import time
 
 import pytest
 
-from trustpipe.metrics import Stopwatch, peak_rss_bytes
+from trustpipe.runtime.metrics import Stopwatch, peak_rss_bytes
 
 
 def test_stopwatch_accumulates_seconds_per_phase() -> None:

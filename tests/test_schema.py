@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 import pyarrow as pa
 import pytest
 
-from trustpipe.ids import capture_id, payload_id
-from trustpipe.schema import (
+from trustpipe.identity.ids import capture_id, payload_id
+from trustpipe.lake.schema import (
     BRONZE_CAPTURES,
     SILVER_DOCUMENTS,
     SILVER_TRUST,

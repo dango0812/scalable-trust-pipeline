@@ -2,7 +2,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from trustpipe.uris import SourceUri, canonical_uri, parse_uri
+from trustpipe.identity.uris import SourceUri, canonical_uri, parse_uri
 
 
 @pytest.mark.parametrize(
