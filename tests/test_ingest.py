@@ -5,13 +5,13 @@ from pathlib import Path
 import pyarrow.parquet as pq
 import pytest
 
+from trustpipe.bronze.ingest import STAGE, capture_file, land
 from trustpipe.cli import main
-from trustpipe.ids import to_text
-from trustpipe.ingest import STAGE, capture_file, land
-from trustpipe.layout import bronze_captures_key
-from trustpipe.receipts import is_committed, load_receipt
-from trustpipe.schema import BRONZE_CAPTURES, Acquisition, RawCapture, from_table, to_table
-from trustpipe.storage import WriteConflictError, lake_path, read_table, write_table
+from trustpipe.identity.ids import to_text
+from trustpipe.lake.layout import bronze_captures_key
+from trustpipe.lake.receipts import is_committed, load_receipt
+from trustpipe.lake.schema import BRONZE_CAPTURES, Acquisition, RawCapture, from_table, to_table
+from trustpipe.lake.storage import WriteConflictError, lake_path, read_table, write_table
 
 SAMPLE = Path(__file__).resolve().parents[1] / "samples" / "dango0812-github-nickname.txt"
 SOURCE_URI = "https://github.com/dango0812"

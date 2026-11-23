@@ -5,8 +5,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from trustpipe.schema import SILVER_DOCUMENTS, SILVER_TRUST, Document, to_table
-from trustpipe.storage import (
+from trustpipe.lake.schema import SILVER_DOCUMENTS, SILVER_TRUST, Document, to_table
+from trustpipe.lake.storage import (
     COMPRESSION,
     WriteConflictError,
     describe,

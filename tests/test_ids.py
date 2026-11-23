@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from trustpipe.ids import (
+from trustpipe.identity.ids import (
     CANONICAL_FORM,
     ID_BYTES,
     canonical_text,

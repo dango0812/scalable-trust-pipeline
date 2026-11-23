@@ -16,10 +16,16 @@ from datetime import datetime
 from pathlib import Path
 
 from trustpipe import __version__
-from trustpipe.layout import bronze_captures_key, part_id
-from trustpipe.receipts import Receipt, commit, is_committed, load_receipt
-from trustpipe.schema import BRONZE_CAPTURES, Acquisition, RawCapture, to_table
-from trustpipe.storage import WriteConflictError, WrittenFile, describe, read_table, write_table
+from trustpipe.lake.layout import bronze_captures_key, part_id
+from trustpipe.lake.receipts import Receipt, commit, is_committed, load_receipt
+from trustpipe.lake.schema import BRONZE_CAPTURES, Acquisition, RawCapture, to_table
+from trustpipe.lake.storage import (
+    WriteConflictError,
+    WrittenFile,
+    describe,
+    read_table,
+    write_table,
+)
 
 STAGE = "bronze.ingest"
 TEXT_UTF8 = "text/plain; charset=utf-8"

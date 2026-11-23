@@ -3,10 +3,8 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from trustpipe.ingest import capture_file, land
-from trustpipe.refine import refine_part
-from trustpipe.registry import load_registry
-from trustpipe.schema import (
+from trustpipe.bronze.ingest import capture_file, land
+from trustpipe.lake.schema import (
     BRONZE_CAPTURES,
     SILVER_DOCUMENTS,
     SILVER_REJECTS,
@@ -16,7 +14,9 @@ from trustpipe.schema import (
     TrustRecord,
     from_table,
 )
-from trustpipe.storage import read_table
+from trustpipe.lake.storage import read_table
+from trustpipe.silver.refine import refine_part
+from trustpipe.trust.registry import load_registry
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE = ROOT / "samples" / "dango0812-github-nickname.txt"

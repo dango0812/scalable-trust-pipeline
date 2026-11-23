@@ -13,11 +13,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from trustpipe.ids import to_text
-from trustpipe.ingest import capture_file, land
-from trustpipe.receipts import Receipt
-from trustpipe.refine import refine_part
-from trustpipe.registry import load_registry
+from trustpipe.bronze.ingest import capture_file, land
+from trustpipe.identity.ids import to_text
+from trustpipe.lake.receipts import Receipt
+from trustpipe.silver.refine import refine_part
+from trustpipe.trust.registry import load_registry
 
 
 def _utc_timestamp(value: str) -> datetime:

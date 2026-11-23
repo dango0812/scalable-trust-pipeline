@@ -30,7 +30,7 @@ from collections.abc import Sequence
 from datetime import date
 from enum import StrEnum
 
-from trustpipe.ids import typed_hash
+from trustpipe.identity.ids import typed_hash
 
 _PART_ID = re.compile(r"[0-9a-f]{16}")
 _STAGE = re.compile(r"[a-z]+(?:\.[a-z]+)*")

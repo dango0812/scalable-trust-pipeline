@@ -9,35 +9,29 @@ Every capture of the part ends up in exactly one of two places:
 So rows(bronze) == rows(documents) + rows(rejects) for every part, and one bad row never
 fails a whole part.
 
-Decoding follows the WHATWG Encoding Standard where it matters for determinism: a byte
-order mark overrides the declared charset and is removed, and only an allow-list of labels
-is accepted, each mapped to the codec the standard prescribes (for example "iso-8859-1" to
-windows-1252). The same bytes therefore decode the same way on every platform; any other
-label is rejected as unsupported_charset.
+Decoding (decoding.py) and the script guess (script.py) live in their own modules.
 
-The silver files are written first and the receipt last (receipts.py). The policy that
+The silver files are written first and the receipt last (lake/receipts.py). The policy that
 decided the trust rows is stored under _policies/, so every row can be explained later.
 """
 
-import re
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from email.message import Message
 from pathlib import Path
 
 from trustpipe import __version__
-from trustpipe.ids import CANONICAL_FORM, canonical_text
-from trustpipe.layout import (
+from trustpipe.identity.ids import CANONICAL_FORM, canonical_text
+from trustpipe.identity.uris import parse_uri
+from trustpipe.lake.layout import (
     parse_bronze_captures_key,
     policy_key,
     silver_documents_key,
     silver_rejects_key,
     silver_trust_key,
 )
-from trustpipe.receipts import Receipt, commit
-from trustpipe.registry import Registry
-from trustpipe.schema import (
+from trustpipe.lake.receipts import Receipt, commit
+from trustpipe.lake.schema import (
     BRONZE_CAPTURES,
     Document,
     RawCapture,
@@ -46,76 +40,12 @@ from trustpipe.schema import (
     from_table,
     to_table,
 )
-from trustpipe.storage import read_table, write_bytes, write_table
-from trustpipe.uris import parse_uri
+from trustpipe.lake.storage import read_table, write_bytes, write_table
+from trustpipe.silver.decoding import UnsupportedCharsetError, decode
+from trustpipe.silver.script import detect_script
+from trustpipe.trust.registry import Registry
 
 STAGE = "silver.refine"
-
-# WHATWG Encoding Standard labels this pipeline decodes, with the codec the standard maps
-# each one to. https://encoding.spec.whatwg.org/#names-and-labels
-_CODECS = {
-    "utf-8": "utf-8",
-    "utf8": "utf-8",
-    "unicode-1-1-utf-8": "utf-8",
-    "us-ascii": "cp1252",
-    "ascii": "cp1252",
-    "iso-8859-1": "cp1252",
-    "iso8859-1": "cp1252",
-    "latin1": "cp1252",
-    "l1": "cp1252",
-    "windows-1252": "cp1252",
-    "cp1252": "cp1252",
-    "euc-kr": "cp949",
-    "ks_c_5601-1987": "cp949",
-    "windows-949": "cp949",
-    "utf-16": "utf-16-le",
-    "utf-16le": "utf-16-le",
-    "utf-16be": "utf-16-be",
-}
-_BOMS = ((b"\xef\xbb\xbf", "utf-8"), (b"\xff\xfe", "utf-16-le"), (b"\xfe\xff", "utf-16-be"))
-
-_ASCII_LETTER = re.compile(r"[A-Za-z]")
-_LETTER = re.compile(r"[^\W\d_]")
-_HANGUL = re.compile("[가-힣ᄀ-ᇿ㄰-㆏]")
-
-
-class UnsupportedCharsetError(ValueError):
-    """The declared charset is not on the allow-list."""
-
-
-def decode(capture: RawCapture) -> str:
-    """Decode the payload strictly: a byte order mark first, then the declared charset."""
-    raw = capture.raw
-    for bom, bom_codec in _BOMS:
-        if raw.startswith(bom):
-            return raw[len(bom) :].decode(bom_codec)
-    header = Message()
-    header["content-type"] = capture.content_type or "text/plain"
-    label = header.get_content_charset() or "utf-8"
-    codec = _CODECS.get(label)
-    if codec is None:
-        raise UnsupportedCharsetError(f"charset {label!r} is not supported")
-    return raw.decode(codec)
-
-
-def detect_script(text: str) -> str | None:
-    """ISO 15924 code of the dominant script: "Hang", "Latn", or None for anything else.
-
-    A deliberate simplification, named for what it is: a script guess, not a language. A
-    production pipeline runs a trained language identifier (fastText-style) and stores its
-    label, score and model version. All counting happens in C (str.isascii, compiled
-    regular expressions), so the guess costs microseconds, not milliseconds, per document.
-    """
-    if text.isascii():
-        return "Latn" if _ASCII_LETTER.search(text) else None
-    letters = len(_LETTER.findall(text))
-    if letters == 0:
-        return None
-    if len(_HANGUL.findall(text)) / letters >= 0.3:
-        return "Hang"
-    if len(_ASCII_LETTER.findall(text)) / letters >= 0.5:
-        return "Latn"
-    return None
 
 
 @dataclass(frozen=True, slots=True)
