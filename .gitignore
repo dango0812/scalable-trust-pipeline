@@ -9,9 +9,6 @@ __pycache__/
 build/
 dist/
 
-# Node (husky, commitlint)
-node_modules/
-
 # OS / editor
 .DS_Store
 Thumbs.db

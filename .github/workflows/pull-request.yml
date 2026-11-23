@@ -18,26 +18,17 @@ jobs:
     name: conventions
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      HUSKY: "0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - name: Install commitlint
-        run: pnpm install --frozen-lockfile
       # Pull requests are squash-merged, so the title becomes the commit on main.
       # Event fields reach the shell through env, never through inline expressions.
       - name: Pull request title
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
-        run: printf '%s\n' "$PR_TITLE" | pnpm exec commitlint --verbose
+        run: python3 scripts/commit_lint.py --message "$PR_TITLE"
       # Dependabot names its own branches and writes commit bodies with long URLs;
       # its pull request title is still checked above.
       - name: Branch name
@@ -50,7 +41,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: pnpm exec commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
+        run: python3 scripts/commit_lint.py --range "$BASE_SHA" "$HEAD_SHA"
 
   dependencies:
     # Fails when the pull request adds a dependency with a known vulnerability.
