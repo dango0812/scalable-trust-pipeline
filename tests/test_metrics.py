@@ -25,12 +25,15 @@ def test_stopwatch_records_a_phase_that_raises() -> None:
     assert "decode" in watch.seconds
 
 
-def test_peak_rss_reports_a_plausible_number_and_never_shrinks() -> None:
+def test_peak_rss_is_in_bytes_and_never_shrinks() -> None:
+    # Growth beyond the previous peak cannot be asserted portably: earlier tests may have
+    # set a higher peak, and on Linux a new process even inherits its parent's peak across
+    # fork and exec. A resident block bounds the peak from below, which checks the unit
+    # (bytes, not the kibibytes Linux reports) on every platform and in any test order.
     before = peak_rss_bytes()
-    assert before > 5 * 1024 * 1024  # a Python process needs more than 5 MiB
     block = bytearray(64 * 1024 * 1024)
     block[::4096] = b"x" * len(block[::4096])  # touch every page so it becomes resident
     after = peak_rss_bytes()
-    assert after >= before + 32 * 1024 * 1024
+    assert after >= max(before, len(block))
     del block
     assert peak_rss_bytes() >= after
