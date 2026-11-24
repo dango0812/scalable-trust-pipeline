@@ -5,7 +5,7 @@
 set -e
 cd "$(dirname "$0")/.."
 
-sh scripts/uv.sh sync --locked --quiet
+sh scripts/uv.sh sync --locked --extra cpu --quiet
 sh scripts/uv.sh run ruff check
 sh scripts/uv.sh run ruff format --check
 sh scripts/uv.sh run mypy

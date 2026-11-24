@@ -25,7 +25,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
       - name: Install locked dependencies
-        run: uv sync --locked
+        run: uv sync --locked --extra cpu
       - name: Lint
         run: uv run ruff check
       - name: Format
@@ -53,7 +53,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
       - name: Install locked dependencies
-        run: uv sync --locked
+        run: uv sync --locked --extra cpu
       - name: Test with coverage (fails under 100% lines and branches)
         run: uv run pytest --cov
 
