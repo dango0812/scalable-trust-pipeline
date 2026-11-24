@@ -16,7 +16,7 @@ from trustpipe.trust.registry import (
     load_registry,
 )
 
-CONFIG = Path(__file__).resolve().parents[1] / "config" / "sources.toml"
+CONFIG = Path(__file__).resolve().parents[2] / "config" / "sources.toml"
 
 
 def rule(prefix: str, tier: TrustTier = TrustTier.PRIMARY) -> SourceRule:

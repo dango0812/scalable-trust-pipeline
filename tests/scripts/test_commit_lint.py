@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "commit_lint.py"
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "commit_lint.py"
 
 
 def lint(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
