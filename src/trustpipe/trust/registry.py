@@ -10,9 +10,10 @@ segments must be a prefix of the URI's path segments. A query string never matte
 nothing that only looks like it is under a trusted path (``/trusted/../other``,
 ``/trusted-impostor``, ``trusted@evil.example``) is covered.
 
-A rule also states which acquisition methods it accepts (default: only captures this
-pipeline fetched itself), so a file handed in with a claimed URI cannot inherit the tier of
-that URI unless the rule says so explicitly.
+A rule also states which acquisition methods it accepts (default: only captures fetched by
+the operator's own crawler), so a file handed in with a claimed URI, or a page taken from a
+third-party archive, cannot inherit the tier of that URI unless the rule says so
+explicitly.
 
 Every registry has a policy id: the SHA-256 of its canonical JSON form. The id is written
 on every trust row, and the policy document itself is kept in the lake, so any decision

@@ -145,7 +145,7 @@ class Acquisition(StrEnum):
     """How the bytes of a capture were obtained; a trust rule states which it accepts."""
 
     SUBMISSION = "submission"  # handed in as a file; the stated source URI is a claim
-    HTTP_FETCH = "http_fetch"  # fetched from source_uri by this pipeline
+    HTTP_FETCH = "http_fetch"  # fetched from source_uri by the operator's own crawler (WARC)
     ARCHIVE_IMPORT = "archive_import"  # read from a third-party web archive
 
 

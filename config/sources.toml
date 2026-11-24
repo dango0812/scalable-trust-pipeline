@@ -8,8 +8,9 @@
 # A capture matches the rule with the most specific uri_prefix that covers its canonical
 # source URI (same scheme, host and port; the rule's path segments are a prefix of the
 # URI's). A rule applies only to the acquisition methods in `accepts` (default:
-# ["http_fetch"], captures this pipeline fetched itself). Captures that match no rule are
-# refined with tier "unverified".
+# ["http_fetch"], captures fetched by the operator's own crawler and handed over as WARC;
+# "archive_import" covers third-party archives and datasets, "submission" handed-in files).
+# Captures that match no rule are refined with tier "unverified".
 version = "2026-11-22"
 
 [[source]]
