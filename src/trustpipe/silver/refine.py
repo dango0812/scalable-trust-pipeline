@@ -9,7 +9,10 @@ Every capture of the part ends up in exactly one of two places:
 So rows(bronze) == rows(documents) + rows(rejects) for every part, and one bad row never
 fails a whole part.
 
-Decoding (decoding.py) and the script guess (script.py) live in their own modules.
+Plain text (text/plain, text/markdown) is decoded as it is; HTML pages are decoded and
+reduced to their main text (html.py); any other media type, such as images or PDF, is
+rejected as unsupported. Decoding (decoding.py) and the script guess (script.py) live in
+their own modules.
 
 Two entry points share one per-capture function, so they cannot disagree:
 
@@ -56,7 +59,8 @@ from trustpipe.lake.schema import (
     TrustRecord,
 )
 from trustpipe.lake.storage import file_sha256, lake_path, read_table, write_bytes, write_table
-from trustpipe.silver.decoding import UnsupportedCharsetError, decode_bytes
+from trustpipe.silver.decoding import UnsupportedCharsetError, decode_bytes, media_type
+from trustpipe.silver.html import HTML_TYPES, PLAIN_TYPES, extractor, main_text, meta_charset
 from trustpipe.silver.script import detect_script
 from trustpipe.trust.registry import Decision, Registry
 
@@ -90,12 +94,22 @@ class _Failure:
 
 
 def _text_or_reason(raw: bytes, content_type: str | None) -> _Text | _Failure:
+    media = media_type(content_type)
+    if media not in PLAIN_TYPES and media not in HTML_TYPES:
+        return _Failure("unsupported_media_type", media)
     try:
-        text = canonical_text(decode_bytes(raw, content_type))
+        if media in PLAIN_TYPES:
+            decoded: str | None = decode_bytes(raw, content_type)
+        else:
+            html = decode_bytes(raw, content_type, fallback=meta_charset(raw) or "utf-8")
+            decoded = main_text(html)
     except UnsupportedCharsetError as error:
         return _Failure("unsupported_charset", str(error))
     except UnicodeDecodeError as error:
         return _Failure("undecodable", f"{error.encoding}: {error.reason} at byte {error.start}")
+    if decoded is None:
+        return _Failure("no_main_text", "the page has no main text to extract")
+    text = canonical_text(decoded)
     if not text.strip():
         return _Failure("empty_text", "the payload holds no visible text")
     return _Text(text, sha256(text.encode("utf-8")), detect_script(text))
@@ -248,6 +262,7 @@ def refine_part(root: Path, bronze_key: str, registry: Registry) -> Receipt:
         transform={
             "trustpipe": __version__,
             "canonical_form": CANONICAL_FORM,
+            "html_extractor": extractor(),
             "policy_id": registry.policy_id,
         },
         counters=dict(sorted(counters.items())),
