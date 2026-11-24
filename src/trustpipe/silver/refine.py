@@ -28,8 +28,9 @@ decided the trust rows is stored under _policies/, so every row can be explained
 """
 
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import cast
 
@@ -46,7 +47,7 @@ from trustpipe.lake.layout import (
     silver_rejects_key,
     silver_trust_key,
 )
-from trustpipe.lake.receipts import Receipt, commit, is_committed, load_receipt
+from trustpipe.lake.receipts import Receipt, commit, committed_parts, is_committed, load_receipt
 from trustpipe.lake.schema import (
     BRONZE_CAPTURES,
     SILVER_DOCUMENTS,
@@ -59,6 +60,7 @@ from trustpipe.lake.schema import (
     TrustRecord,
 )
 from trustpipe.lake.storage import file_sha256, lake_path, read_table, write_bytes, write_table
+from trustpipe.runtime.executor import PartReport, RunSummary, TaskEvent, run_stage
 from trustpipe.silver.decoding import UnsupportedCharsetError, decode_bytes, media_type
 from trustpipe.silver.html import HTML_TYPES, PLAIN_TYPES, extractor, main_text, meta_charset
 from trustpipe.silver.script import detect_script
@@ -269,3 +271,50 @@ def refine_part(root: Path, bronze_key: str, registry: Registry) -> Receipt:
     )
     commit(root, receipt, create_only=False)
     return receipt
+
+
+def _refine_task(root: Path, registry: Registry, bronze_key: str) -> PartReport:
+    receipt = refine_part(root, bronze_key, registry)
+    documents, rejects = receipt.counters["documents"], receipt.counters["rejects"]
+    return PartReport(
+        tuple(o.key for o in receipt.outputs),
+        documents + rejects,
+        documents,
+        lake_path(root, bronze_key).stat().st_size,
+        sum(o.bytes for o in receipt.outputs),
+        counters=dict(receipt.counters),
+    )
+
+
+def _refined(root: Path, registry: Registry, bronze_key: str) -> bool:
+    """Committed with this policy and this HTML extractor; anything else is refined again."""
+    part = parse_bronze_captures_key(bronze_key)[1]
+    if not is_committed(root, STAGE, part):
+        return False
+    transform = load_receipt(root, STAGE, part).transform
+    return (
+        transform["policy_id"] == registry.policy_id
+        and transform.get("html_extractor") == extractor()
+    )
+
+
+def refine_all(
+    root: Path,
+    registry: Registry,
+    *,
+    workers: int = 1,
+    on_event: Callable[[TaskEvent], None] | None = None,
+) -> RunSummary:
+    """Refine every committed bronze part that is not refined under this policy yet."""
+    keys = [
+        load_receipt(root, BRONZE_STAGE, part).outputs[0].key
+        for part in committed_parts(root, BRONZE_STAGE)
+    ]
+    return run_stage(
+        STAGE,
+        partial(_refine_task, root, registry),
+        keys,
+        workers=workers,
+        is_done=partial(_refined, root, registry),
+        on_event=on_event,
+    )

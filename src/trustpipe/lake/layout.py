@@ -8,6 +8,13 @@ and on an object store (``s3://bucket/lake/<key>``) later. Partitions use the Hi
     silver/documents/date=<yyyy-mm-dd>/part-<id>.parquet
     silver/rejects/date=<yyyy-mm-dd>/part-<id>.parquet
     silver/trust/policy=<policy>/date=<yyyy-mm-dd>/part-<id>.parquet
+    gold/signals/policy=<gold policy>/date=<yyyy-mm-dd>/part-<id>.parquet
+    gold/dedup/snapshot=<id>/part-<id>.parquet
+    gold/documents/snapshot=<id>/date=<yyyy-mm-dd>/part-<id>.parquet
+    gold/rejects/snapshot=<id>/date=<yyyy-mm-dd>/part-<id>.parquet
+    gold/chunks/snapshot=<id>/date=<yyyy-mm-dd>/part-<id>.parquet
+    gold/tokens/snapshot=<id>/tokenizer=<id>/part-<id>.bin (+ .idx.parquet)
+    _snapshots/<id>.json               manifest of one gold snapshot (gold/stages.py)
     _receipts/<stage>/<id>.json        commit record of one part (receipts.py)
     _policies/<sha256 hex>.json        every policy that ever produced trust rows
     _runs/<run id>/                    run logs (runlog.py)
@@ -82,6 +89,44 @@ def silver_trust_key(policy_id: str, day: date, part: str) -> str:
     # 12 hex digits (48 bits) keep paths short; the full id is in every row and receipt.
     policy = _policy_hex(policy_id)[:12]
     return f"{Layer.SILVER}/trust/policy={policy}/date={day.isoformat()}/{_part(part)}"
+
+
+def _hex12(value: str, what: str) -> str:
+    if not re.fullmatch(r"[0-9a-f]{12,64}", value):
+        raise ValueError(f"{what} must be lower-case hex, got {value!r}")
+    return value[:12]
+
+
+def gold_signals_key(gold_policy_id: str, day: date, part: str) -> str:
+    policy = _policy_hex(gold_policy_id)[:12]
+    return f"{Layer.GOLD}/signals/policy={policy}/date={day.isoformat()}/{_part(part)}"
+
+
+def gold_dedup_key(snapshot: str, part: str) -> str:
+    return f"{Layer.GOLD}/dedup/snapshot={_hex12(snapshot, 'snapshot')}/{_part(part)}"
+
+
+def gold_table_key(table: str, snapshot: str, day: date, part: str) -> str:
+    """Key of a gold documents, rejects or chunks part of one snapshot."""
+    if table not in ("documents", "rejects", "chunks"):
+        raise ValueError(f"unknown gold table {table!r}")
+    name = _hex12(snapshot, "snapshot")
+    return f"{Layer.GOLD}/{table}/snapshot={name}/date={day.isoformat()}/{_part(part)}"
+
+
+def gold_tokens_keys(snapshot: str, tokenizer: str, part: str) -> tuple[str, str]:
+    """Keys of the token file and its document index for one part."""
+    prefix = (
+        f"{Layer.GOLD}/tokens/snapshot={_hex12(snapshot, 'snapshot')}"
+        f"/tokenizer={_hex12(tokenizer, 'tokenizer')}/{_part(part).removesuffix('.parquet')}"
+    )
+    return f"{prefix}.bin", f"{prefix}.idx.parquet"
+
+
+def snapshot_key(snapshot: str) -> str:
+    if not re.fullmatch(r"[0-9a-f]{16}", snapshot):
+        raise ValueError(f"snapshot id must be 16 lower-case hex digits, got {snapshot!r}")
+    return f"_snapshots/{snapshot}.json"
 
 
 def receipt_key(stage: str, part: str) -> str:

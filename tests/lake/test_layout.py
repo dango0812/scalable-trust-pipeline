@@ -85,3 +85,31 @@ def test_control_files_have_their_own_keys() -> None:
 def test_invalid_key_parts_are_rejected(build: Callable[[], str], problem: str) -> None:
     with pytest.raises(ValueError, match=problem):
         build()
+
+
+def test_gold_keys_name_their_snapshot_and_refuse_bad_ids() -> None:
+    from datetime import date
+
+    from trustpipe.lake.layout import (
+        gold_dedup_key,
+        gold_table_key,
+        gold_tokens_keys,
+        snapshot_key,
+    )
+
+    snap = "0123456789abcdef"
+    assert (
+        gold_dedup_key(snap, "a" * 16)
+        == f"gold/dedup/snapshot=0123456789ab/part-{'a' * 16}.parquet"
+    )
+    assert gold_table_key("chunks", snap, date(2026, 1, 2), "b" * 16).startswith(
+        "gold/chunks/snapshot=0123456789ab/date=2026-01-02/"
+    )
+    assert gold_tokens_keys(snap, "c" * 64, "d" * 16)[1].endswith(".idx.parquet")
+    assert snapshot_key(snap) == f"_snapshots/{snap}.json"
+    with pytest.raises(ValueError, match="unknown gold table"):
+        gold_table_key("signals", snap, date(2026, 1, 2), "b" * 16)
+    with pytest.raises(ValueError, match="lower-case hex"):
+        gold_dedup_key("SNAPSHOT", "a" * 16)
+    with pytest.raises(ValueError, match="16 lower-case hex digits"):
+        snapshot_key("0123")

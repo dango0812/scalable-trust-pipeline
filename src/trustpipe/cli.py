@@ -16,10 +16,15 @@ from typing import Any
 from trustpipe.archive.datasets import DatasetFields
 from trustpipe.archive.importer import import_dataset, import_warc
 from trustpipe.bronze.ingest import capture_file, land
+from trustpipe.gold.policy import load_gold_policy
+from trustpipe.gold.stages import build_gold
+from trustpipe.gold.tokens import tokenize_snapshot
 from trustpipe.identity.ids import to_text
 from trustpipe.lake.receipts import Receipt
 from trustpipe.lake.schema import Acquisition
-from trustpipe.silver.refine import refine_part
+from trustpipe.runtime.executor import RunSummary
+from trustpipe.runtime.runlog import RunLog
+from trustpipe.silver.refine import refine_all, refine_part
 from trustpipe.trust.registry import load_registry
 
 
@@ -77,7 +82,79 @@ def _parser() -> argparse.ArgumentParser:
     refine.add_argument(
         "--registry", type=Path, default=Path("config/sources.toml"), help="source registry"
     )
+    everything = commands.add_parser(
+        "refine-all", help="refine every bronze part not yet refined under the registry"
+    )
+    everything.add_argument("--registry", type=Path, default=Path("config/sources.toml"))
+    everything.add_argument("--workers", type=int, default=1)
+
+    gold = commands.add_parser(
+        "gold", help="build a gold snapshot: trust and quality filters, dedup, chunks"
+    )
+    gold.add_argument("--policy", type=Path, default=Path("config/gold.toml"))
+    gold.add_argument("--workers", type=int, default=1)
+
+    tokens = commands.add_parser("tokens", help="tokenize a gold snapshot into training files")
+    tokens.add_argument("snapshot", help="snapshot id printed by the gold command")
+    tokens.add_argument("--tokenizer", type=Path, required=True, help="a tokenizer.json file")
+    tokens.add_argument("--eos", required=True, help="end-of-text token, e.g. <|endoftext|>")
+    tokens.add_argument("--workers", type=int, default=1)
     return parser
+
+
+def _summary(summary: RunSummary) -> dict[str, Any]:
+    return {
+        "parts": summary.parts,
+        "ok": summary.ok,
+        "skipped": summary.skipped,
+        "failed": summary.failed,
+        "rows_in": summary.rows_in,
+        "rows_out": summary.rows_out,
+        "counters": summary.counters,
+    }
+
+
+def _refine_all(args: argparse.Namespace) -> dict[str, Any]:
+    registry = load_registry(args.registry)
+    with RunLog(args.lake, "silver.refine") as log:
+        summary = refine_all(args.lake, registry, workers=args.workers, on_event=log.record)
+        log.finish(summary)
+    return {"stage": "silver.refine", "policy_id": registry.policy_id, **_summary(summary)}
+
+
+def _gold(args: argparse.Namespace) -> dict[str, Any]:
+    policy = load_gold_policy(args.policy)
+    with RunLog(args.lake, "gold") as log:
+        snapshot = build_gold(args.lake, policy, workers=args.workers, on_event=log.record)
+        log.finish(snapshot.build)
+    return {
+        "stage": "gold",
+        "snapshot": snapshot.snapshot,
+        "manifest": snapshot.manifest_key,
+        "gold_policy_id": policy.policy_id,
+        "documents": snapshot.documents,
+        "chunks": snapshot.chunks,
+        "rejects": snapshot.rejects,
+    }
+
+
+def _tokens(args: argparse.Namespace) -> dict[str, Any]:
+    with RunLog(args.lake, "gold.tokens") as log:
+        result = tokenize_snapshot(
+            args.lake,
+            args.snapshot,
+            args.tokenizer,
+            eos_token=args.eos,
+            workers=args.workers,
+            on_event=log.record,
+        )
+        log.finish(result.run)
+    return {
+        "stage": "gold.tokens",
+        "manifest": result.manifest_key,
+        "documents": result.documents,
+        "tokens": result.tokens,
+    }
 
 
 def _outputs(receipt: Receipt) -> list[dict[str, Any]]:
@@ -132,6 +209,9 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], dict[str, Any]]] = {
     "import-warc": _import_warc,
     "import-dataset": _import_dataset,
     "refine": _refine,
+    "refine-all": _refine_all,
+    "gold": _gold,
+    "tokens": _tokens,
 }
 
 
