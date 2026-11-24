@@ -19,7 +19,9 @@ from trustpipe.bronze.ingest import capture_file, land
 from trustpipe.identity.ids import to_text
 from trustpipe.lake.receipts import Receipt
 from trustpipe.lake.schema import Acquisition
-from trustpipe.silver.refine import refine_part
+from trustpipe.runtime.executor import RunSummary
+from trustpipe.runtime.runlog import RunLog
+from trustpipe.silver.refine import refine_all, refine_part
 from trustpipe.trust.registry import load_registry
 
 
@@ -77,7 +79,33 @@ def _parser() -> argparse.ArgumentParser:
     refine.add_argument(
         "--registry", type=Path, default=Path("config/sources.toml"), help="source registry"
     )
+    everything = commands.add_parser(
+        "refine-all", help="refine every bronze part not yet refined under the registry"
+    )
+    everything.add_argument("--registry", type=Path, default=Path("config/sources.toml"))
+    everything.add_argument("--workers", type=int, default=1)
+
     return parser
+
+
+def _summary(summary: RunSummary) -> dict[str, Any]:
+    return {
+        "parts": summary.parts,
+        "ok": summary.ok,
+        "skipped": summary.skipped,
+        "failed": summary.failed,
+        "rows_in": summary.rows_in,
+        "rows_out": summary.rows_out,
+        "counters": summary.counters,
+    }
+
+
+def _refine_all(args: argparse.Namespace) -> dict[str, Any]:
+    registry = load_registry(args.registry)
+    with RunLog(args.lake, "silver.refine") as log:
+        summary = refine_all(args.lake, registry, workers=args.workers, on_event=log.record)
+        log.finish(summary)
+    return {"stage": "silver.refine", "policy_id": registry.policy_id, **_summary(summary)}
 
 
 def _outputs(receipt: Receipt) -> list[dict[str, Any]]:
@@ -132,6 +160,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], dict[str, Any]]] = {
     "import-warc": _import_warc,
     "import-dataset": _import_dataset,
     "refine": _refine,
+    "refine-all": _refine_all,
 }
 
 
