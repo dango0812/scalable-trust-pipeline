@@ -6,6 +6,7 @@ their text form ("sha256:<hex>").
 """
 
 import argparse
+import dataclasses
 import json
 import time
 from collections.abc import Callable, Sequence
@@ -20,8 +21,11 @@ from trustpipe.gold.policy import load_gold_policy
 from trustpipe.gold.stages import build_gold
 from trustpipe.gold.tokens import tokenize_snapshot
 from trustpipe.identity.ids import to_text
+from trustpipe.index.build import build_index
+from trustpipe.index.embed import Embedder, HashingEmbedder, TransformerEmbedder
+from trustpipe.index.search import Retriever
 from trustpipe.lake.receipts import Receipt
-from trustpipe.lake.schema import Acquisition
+from trustpipe.lake.schema import Acquisition, TrustTier
 from trustpipe.runtime.executor import RunSummary
 from trustpipe.runtime.runlog import RunLog
 from trustpipe.silver.refine import refine_all, refine_part
@@ -99,6 +103,20 @@ def _parser() -> argparse.ArgumentParser:
     tokens.add_argument("--tokenizer", type=Path, required=True, help="a tokenizer.json file")
     tokens.add_argument("--eos", required=True, help="end-of-text token, e.g. <|endoftext|>")
     tokens.add_argument("--workers", type=int, default=1)
+
+    index = commands.add_parser("index", help="build the hybrid retrieval index of a snapshot")
+    index.add_argument("snapshot", help="snapshot id printed by the gold command")
+    index.add_argument(
+        "--embedder",
+        default="hashing",
+        help="hashing (no model) or a Hugging Face encoder, e.g. intfloat/multilingual-e5-small",
+    )
+
+    search = commands.add_parser("search", help="search a retrieval index directory")
+    search.add_argument("index_dir", type=Path)
+    search.add_argument("query")
+    search.add_argument("--k", type=int, default=5)
+    search.add_argument("--min-tier", choices=[t.value for t in TrustTier], default=None)
     return parser
 
 
@@ -157,6 +175,28 @@ def _tokens(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def _embedder(name: str) -> Embedder:
+    return HashingEmbedder() if name == "hashing" else TransformerEmbedder(name)
+
+
+def _index(args: argparse.Namespace) -> dict[str, Any]:
+    built = build_index(args.lake, args.snapshot, _embedder(args.embedder))
+    return {
+        "stage": "index.build",
+        "index_id": built.index_id,
+        "directory": str(built.directory),
+        "chunks": built.chunks,
+        "dense": built.dense_kind,
+    }
+
+
+def _search(args: argparse.Namespace) -> dict[str, Any]:
+    retriever = Retriever(args.index_dir)
+    min_tier = TrustTier(args.min_tier) if args.min_tier else None
+    hits = retriever.search(args.query, args.k, min_tier=min_tier)
+    return {"stage": "search", "query": args.query, "hits": [dataclasses.asdict(h) for h in hits]}
+
+
 def _outputs(receipt: Receipt) -> list[dict[str, Any]]:
     return [{"key": f.key, "rows": f.rows, "bytes": f.bytes} for f in receipt.outputs]
 
@@ -212,6 +252,8 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], dict[str, Any]]] = {
     "refine-all": _refine_all,
     "gold": _gold,
     "tokens": _tokens,
+    "index": _index,
+    "search": _search,
 }
 
 

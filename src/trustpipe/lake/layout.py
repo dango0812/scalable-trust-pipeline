@@ -15,6 +15,7 @@ and on an object store (``s3://bucket/lake/<key>``) later. Partitions use the Hi
     gold/chunks/snapshot=<id>/date=<yyyy-mm-dd>/part-<id>.parquet
     gold/tokens/snapshot=<id>/tokenizer=<id>/part-<id>.bin (+ .idx.parquet)
     _snapshots/<id>.json               manifest of one gold snapshot (gold/stages.py)
+    index/snapshot=<id>/embedder=<id>/ retrieval index of one snapshot (index/build.py)
     _receipts/<stage>/<id>.json        commit record of one part (receipts.py)
     _policies/<sha256 hex>.json        every policy that ever produced trust rows
     _runs/<run id>/                    run logs (runlog.py)
@@ -121,6 +122,14 @@ def gold_tokens_keys(snapshot: str, tokenizer: str, part: str) -> tuple[str, str
         f"/tokenizer={_hex12(tokenizer, 'tokenizer')}/{_part(part).removesuffix('.parquet')}"
     )
     return f"{prefix}.bin", f"{prefix}.idx.parquet"
+
+
+def index_key(snapshot: str, embedder: str, name: str) -> str:
+    """Key of one file of the retrieval index of a snapshot built with one embedder."""
+    return (
+        f"index/snapshot={_hex12(snapshot, 'snapshot')}"
+        f"/embedder={_hex12(embedder, 'embedder')}/{name}"
+    )
 
 
 def snapshot_key(snapshot: str) -> str:
