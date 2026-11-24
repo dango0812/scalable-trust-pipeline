@@ -8,6 +8,7 @@ label is rejected as unsupported.
 """
 
 from email.message import Message
+from functools import lru_cache
 
 from trustpipe.lake.schema import RawCapture
 
@@ -39,16 +40,41 @@ class UnsupportedCharsetError(ValueError):
     """The declared charset is not on the allow-list."""
 
 
-def decode(capture: RawCapture) -> str:
-    """Decode the payload strictly: a byte order mark first, then the declared charset."""
-    raw = capture.raw
+def media_type(content_type: str | None) -> str:
+    """The lower-case media type of a Content-Type value; text/plain when there is none."""
+    return _parsed(content_type)[0]
+
+
+def declared_charset(content_type: str | None) -> str | None:
+    """The charset label of a Content-Type value, lower-cased, if it declares one."""
+    return _parsed(content_type)[1]
+
+
+# Content-Type values repeat across a part (one per server configuration), so each one is
+# parsed once: the email parser costs ~20 µs per call and dominated decoding before.
+@lru_cache(maxsize=4096)
+def _parsed(content_type: str | None) -> tuple[str, str | None]:
+    header = Message()
+    header["content-type"] = content_type or "text/plain"
+    return header.get_content_type(), header.get_content_charset()
+
+
+def codec_for(label: str) -> str:
+    """The Python codec the WHATWG standard prescribes for a charset label."""
+    codec = _CODECS.get(label.strip().lower())
+    if codec is None:
+        raise UnsupportedCharsetError(f"charset {label!r} is not supported")
+    return codec
+
+
+def decode_bytes(raw: bytes, content_type: str | None, *, fallback: str = "utf-8") -> str:
+    """Decode strictly: a byte order mark first, then the declared charset, then fallback."""
     for bom, bom_codec in _BOMS:
         if raw.startswith(bom):
             return raw[len(bom) :].decode(bom_codec)
-    header = Message()
-    header["content-type"] = capture.content_type or "text/plain"
-    label = header.get_content_charset() or "utf-8"
-    codec = _CODECS.get(label)
-    if codec is None:
-        raise UnsupportedCharsetError(f"charset {label!r} is not supported")
-    return raw.decode(codec)
+    return raw.decode(codec_for(declared_charset(content_type) or fallback))
+
+
+def decode(capture: RawCapture) -> str:
+    """Decode a capture's payload (see ``decode_bytes``)."""
+    return decode_bytes(capture.raw, capture.content_type)

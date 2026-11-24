@@ -120,6 +120,20 @@ def parse_uri(uri: str) -> SourceUri:
     return SourceUri(parts.scheme, host, port, path, query)
 
 
+def split_canonical(uri: str) -> SourceUri:
+    """Split a URI that is already canonical (as stored in bronze) without re-validating it.
+
+    About ten times cheaper than ``parse_uri``; the bulk refine path uses it for URIs whose
+    canonical form was checked when the capture was written and whose file was then
+    checked against its receipt. ``split_canonical(str(u)) == u`` for every parsed ``u``.
+    """
+    scheme, _, rest = uri.partition("://")
+    authority, slash, path_and_query = rest.partition("/")
+    path, question, query = ("/" + path_and_query if slash else "/").partition("?")
+    host, colon, port = authority.partition(":")
+    return SourceUri(scheme, host, int(port) if colon else None, path, query if question else None)
+
+
 def canonical_uri(uri: str) -> str:
     """The one spelling under which a source URI is stored and compared."""
     return str(parse_uri(uri))
