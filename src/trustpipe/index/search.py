@@ -66,6 +66,27 @@ class Retriever:
     def __len__(self) -> int:
         return len(self._rows)
 
+    def _hit(self, row: int, score: float, cosine: float | None, bm25: float | None) -> Hit:
+        chunk = self._rows[row]
+        return Hit(
+            chunk_id=to_text(chunk["chunk_id"]),
+            doc_id=to_text(chunk["doc_id"]),
+            text=chunk["text"],
+            source_uri=chunk["source_uri"],
+            tier=chunk["tier"],
+            license=chunk["license"],
+            char_start=chunk["char_start"],
+            char_end=chunk["char_end"],
+            score=score,
+            cosine=cosine,
+            bm25=bm25,
+        )
+
+    def passages_of(self, source_uri: str) -> list[Hit]:
+        """Every passage of one source, in document order (scores are zero)."""
+        rows = [i for i, chunk in enumerate(self._rows) if chunk["source_uri"] == source_uri]
+        return [self._hit(row, 0.0, None, None) for row in rows]
+
     def search(
         self, query: str, k: int = 5, *, min_tier: TrustTier | None = None, pool: int = 50
     ) -> list[Hit]:
@@ -82,24 +103,9 @@ class Retriever:
         ordered = sorted(fused.items(), key=lambda item: (-item[1], item[0]))
         hits: list[Hit] = []
         for row, score in ordered:
-            chunk = self._rows[row]
-            if chunk["tier_rank"] < minimum:
+            if self._rows[row]["tier_rank"] < minimum:
                 continue
-            hits.append(
-                Hit(
-                    chunk_id=to_text(chunk["chunk_id"]),
-                    doc_id=to_text(chunk["doc_id"]),
-                    text=chunk["text"],
-                    source_uri=chunk["source_uri"],
-                    tier=chunk["tier"],
-                    license=chunk["license"],
-                    char_start=chunk["char_start"],
-                    char_end=chunk["char_end"],
-                    score=score,
-                    cosine=cosine.get(row),
-                    bm25=bm25.get(row),
-                )
-            )
+            hits.append(self._hit(row, score, cosine.get(row), bm25.get(row)))
             if len(hits) == k:
                 break
         return hits
