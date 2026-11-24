@@ -16,6 +16,8 @@ from typing import Any
 from trustpipe.archive.datasets import DatasetFields
 from trustpipe.archive.importer import import_dataset, import_warc
 from trustpipe.bronze.ingest import capture_file, land
+from trustpipe.gold.policy import load_gold_policy
+from trustpipe.gold.stages import build_gold
 from trustpipe.identity.ids import to_text
 from trustpipe.lake.receipts import Receipt
 from trustpipe.lake.schema import Acquisition
@@ -85,6 +87,12 @@ def _parser() -> argparse.ArgumentParser:
     everything.add_argument("--registry", type=Path, default=Path("config/sources.toml"))
     everything.add_argument("--workers", type=int, default=1)
 
+    gold = commands.add_parser(
+        "gold", help="build a gold snapshot: trust and quality filters, dedup, chunks"
+    )
+    gold.add_argument("--policy", type=Path, default=Path("config/gold.toml"))
+    gold.add_argument("--workers", type=int, default=1)
+
     return parser
 
 
@@ -106,6 +114,22 @@ def _refine_all(args: argparse.Namespace) -> dict[str, Any]:
         summary = refine_all(args.lake, registry, workers=args.workers, on_event=log.record)
         log.finish(summary)
     return {"stage": "silver.refine", "policy_id": registry.policy_id, **_summary(summary)}
+
+
+def _gold(args: argparse.Namespace) -> dict[str, Any]:
+    policy = load_gold_policy(args.policy)
+    with RunLog(args.lake, "gold") as log:
+        snapshot = build_gold(args.lake, policy, workers=args.workers, on_event=log.record)
+        log.finish(snapshot.build)
+    return {
+        "stage": "gold",
+        "snapshot": snapshot.snapshot,
+        "manifest": snapshot.manifest_key,
+        "gold_policy_id": policy.policy_id,
+        "documents": snapshot.documents,
+        "chunks": snapshot.chunks,
+        "rejects": snapshot.rejects,
+    }
 
 
 def _outputs(receipt: Receipt) -> list[dict[str, Any]]:
@@ -161,6 +185,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], dict[str, Any]]] = {
     "import-dataset": _import_dataset,
     "refine": _refine,
     "refine-all": _refine_all,
+    "gold": _gold,
 }
 
 

@@ -1,0 +1,44 @@
+# Gold policy: which silver documents become training data, and how they are prepared.
+#
+# Reviewed like code. The SHA-256 of this file's canonical form is the gold policy id,
+# recorded on every gold part, so each training document can be traced to these rules.
+# Every value below is the default; a key that is left out takes the same value.
+version = "2026-11-24"
+
+# The lowest trust tier that may be trained on: primary, institutional, reviewed or
+# unverified. Below it a document is rejected, whatever its quality.
+min_tier = "reviewed"
+
+# Gopher quality and repetition rules (Rae et al. 2021), with datatrove's thresholds.
+# Words are whitespace-separated tokens. The word-length and stop-word rules were
+# calibrated on English and apply to Latin-script texts only.
+[quality]
+min_words = 50
+max_words = 100000
+min_mean_word_length = 3.0
+max_mean_word_length = 10.0
+max_hash_ratio = 0.1
+max_ellipsis_ratio = 0.1
+max_bullet_lines = 0.9
+max_ellipsis_lines = 0.3
+min_alpha_words = 0.8
+stop_words = ["the", "be", "to", "of", "and", "that", "have", "with"]
+min_stop_words = 2
+max_dup_line_frac = 0.3
+max_dup_para_frac = 0.3
+max_dup_line_char_frac = 0.2
+max_dup_para_char_frac = 0.2
+top_ngrams = [[2, 0.2], [3, 0.18], [4, 0.16]]
+dup_ngrams = [[5, 0.15], [6, 0.14], [7, 0.13], [8, 0.12], [9, 0.11], [10, 0.10]]
+
+# MinHash near-duplicate detection, FineWeb's setting: word 5-grams, 14 bands of 8 hashes.
+[dedup]
+ngram = 5
+bands = 14
+rows = 8
+seed = 1
+
+# Retrieval passages: lines packed up to max_chars; a shorter last piece is merged.
+[chunks]
+max_chars = 1200
+min_chars = 200

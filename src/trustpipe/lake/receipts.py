@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Self
 
 from trustpipe.lake.layout import receipt_key
-from trustpipe.lake.storage import WrittenFile, lake_path, write_json
+from trustpipe.lake.storage import WrittenFile, file_sha256, lake_path, write_json
 
 FORMAT = "trustpipe.receipt/1"
 
@@ -78,6 +78,19 @@ def is_committed(root: Path, stage: str, part: str) -> bool:
 def load_receipt(root: Path, stage: str, part: str) -> Receipt:
     path = lake_path(root, receipt_key(stage, part))
     return Receipt.from_document(json.loads(path.read_text(encoding="utf-8")))
+
+
+class IntegrityError(ValueError):
+    """A committed file is missing or its bytes differ from the SHA-256 in its receipt."""
+
+
+def verify_file(root: Path, written: WrittenFile) -> None:
+    """Check one output of a receipt against the bytes on disk."""
+    path = lake_path(root, written.key)
+    if not path.is_file():
+        raise IntegrityError(f"{written.key} is named by a receipt but missing")
+    if file_sha256(path) != written.sha256:
+        raise IntegrityError(f"{written.key} does not match the SHA-256 in its receipt")
 
 
 def committed_parts(root: Path, stage: str) -> list[str]:

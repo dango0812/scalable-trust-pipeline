@@ -50,9 +50,12 @@ _UTC_MICROS = pa.timestamp("us", tz="UTC")
 _POLICY_ID = re.compile(r"sha256:[0-9a-f]{64}")
 
 
-def _schema(name: str, version: int, fields: list[tuple[str, pa.DataType, bool]]) -> pa.Schema:
-    # The table name and version travel inside every Parquet file's key-value metadata,
-    # so a file found on its own still says what it is.
+def table_schema(name: str, version: int, fields: list[tuple[str, pa.DataType, bool]]) -> pa.Schema:
+    """An Arrow schema with permanent field ids, the table name and its version.
+
+    The table name and version travel inside every Parquet file's key-value metadata, so a
+    file found on its own still says what it is.
+    """
     return pa.schema(
         [
             pa.field(column, kind, nullable=nullable, metadata={b"PARQUET:field_id": b"%d" % i})
@@ -62,7 +65,7 @@ def _schema(name: str, version: int, fields: list[tuple[str, pa.DataType, bool]]
     )
 
 
-BRONZE_CAPTURES = _schema(
+BRONZE_CAPTURES = table_schema(
     "bronze.captures",
     2,
     [
@@ -78,7 +81,7 @@ BRONZE_CAPTURES = _schema(
     ],
 )
 
-SILVER_DOCUMENTS = _schema(
+SILVER_DOCUMENTS = table_schema(
     "silver.documents",
     2,
     [
@@ -89,7 +92,7 @@ SILVER_DOCUMENTS = _schema(
     ],
 )
 
-SILVER_REJECTS = _schema(
+SILVER_REJECTS = table_schema(
     "silver.rejects",
     1,
     [
@@ -100,7 +103,7 @@ SILVER_REJECTS = _schema(
     ],
 )
 
-SILVER_TRUST = _schema(
+SILVER_TRUST = table_schema(
     "silver.trust",
     2,
     [
