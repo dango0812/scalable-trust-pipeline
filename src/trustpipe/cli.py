@@ -18,6 +18,7 @@ from trustpipe.archive.importer import import_dataset, import_warc
 from trustpipe.bronze.ingest import capture_file, land
 from trustpipe.gold.policy import load_gold_policy
 from trustpipe.gold.stages import build_gold
+from trustpipe.gold.tokens import tokenize_snapshot
 from trustpipe.identity.ids import to_text
 from trustpipe.lake.receipts import Receipt
 from trustpipe.lake.schema import Acquisition
@@ -93,6 +94,11 @@ def _parser() -> argparse.ArgumentParser:
     gold.add_argument("--policy", type=Path, default=Path("config/gold.toml"))
     gold.add_argument("--workers", type=int, default=1)
 
+    tokens = commands.add_parser("tokens", help="tokenize a gold snapshot into training files")
+    tokens.add_argument("snapshot", help="snapshot id printed by the gold command")
+    tokens.add_argument("--tokenizer", type=Path, required=True, help="a tokenizer.json file")
+    tokens.add_argument("--eos", required=True, help="end-of-text token, e.g. <|endoftext|>")
+    tokens.add_argument("--workers", type=int, default=1)
     return parser
 
 
@@ -129,6 +135,25 @@ def _gold(args: argparse.Namespace) -> dict[str, Any]:
         "documents": snapshot.documents,
         "chunks": snapshot.chunks,
         "rejects": snapshot.rejects,
+    }
+
+
+def _tokens(args: argparse.Namespace) -> dict[str, Any]:
+    with RunLog(args.lake, "gold.tokens") as log:
+        result = tokenize_snapshot(
+            args.lake,
+            args.snapshot,
+            args.tokenizer,
+            eos_token=args.eos,
+            workers=args.workers,
+            on_event=log.record,
+        )
+        log.finish(result.run)
+    return {
+        "stage": "gold.tokens",
+        "manifest": result.manifest_key,
+        "documents": result.documents,
+        "tokens": result.tokens,
     }
 
 
@@ -186,6 +211,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], dict[str, Any]]] = {
     "refine": _refine,
     "refine-all": _refine_all,
     "gold": _gold,
+    "tokens": _tokens,
 }
 
 
