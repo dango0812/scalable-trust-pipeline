@@ -23,7 +23,7 @@ from trustpipe.silver.refine import BronzeIntegrityError, refine, refine_part, r
 from trustpipe.silver.script import ASCII_LETTER, HANGUL, LETTER, class_table, detect_script
 from trustpipe.trust.registry import load_registry
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = load_registry(ROOT / "config" / "sources.toml")
 AT = datetime(2026, 11, 24, 9, 30, tzinfo=UTC)
 

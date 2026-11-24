@@ -29,7 +29,7 @@ from trustpipe.silver.refine import STAGE, refine, refine_part
 from trustpipe.silver.script import detect_script
 from trustpipe.trust.registry import UNREGISTERED_REASON, load_registry
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SAMPLE = ROOT / "samples" / "dango0812-github-nickname.txt"
 REGISTRY = load_registry(ROOT / "config" / "sources.toml")
 AT = datetime(2026, 11, 22, 13, 13, tzinfo=UTC)

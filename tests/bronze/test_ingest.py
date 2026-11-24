@@ -13,7 +13,7 @@ from trustpipe.lake.receipts import is_committed, load_receipt
 from trustpipe.lake.schema import BRONZE_CAPTURES, Acquisition, RawCapture, from_table, to_table
 from trustpipe.lake.storage import WriteConflictError, lake_path, read_table, write_table
 
-SAMPLE = Path(__file__).resolve().parents[1] / "samples" / "dango0812-github-nickname.txt"
+SAMPLE = Path(__file__).resolve().parents[2] / "samples" / "dango0812-github-nickname.txt"
 SOURCE_URI = "https://github.com/dango0812"
 CAPTURED_AT = datetime(2026, 11, 22, 13, 13, tzinfo=UTC)
 PART = "4fd1996c3d4b2944"

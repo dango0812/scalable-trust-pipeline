@@ -8,7 +8,7 @@ from trustpipe.silver.html import extractor, main_text, meta_charset
 from trustpipe.silver.refine import refine
 from trustpipe.trust.registry import load_registry
 
-REGISTRY = load_registry(Path(__file__).resolve().parents[1] / "config" / "sources.toml")
+REGISTRY = load_registry(Path(__file__).resolve().parents[2] / "config" / "sources.toml")
 AT = datetime(2026, 11, 24, tzinfo=UTC)
 
 ARTICLE = """<html><head><meta charset="{charset}"><title>Registry</title></head><body>
