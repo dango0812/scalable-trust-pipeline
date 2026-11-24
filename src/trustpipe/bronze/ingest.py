@@ -11,7 +11,7 @@ wrote the data file but crashed before its receipt, the next attempt checks that
 holds exactly the same captures and only adds the receipt.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 
@@ -62,8 +62,15 @@ def _write_once(root: Path, key: str, captures: Sequence[RawCapture]) -> Written
         return describe(root, key)
 
 
-def land(captures: Sequence[RawCapture], root: Path) -> Receipt:
-    """Write captures as one bronze part, commit it and return its receipt."""
+def land(
+    captures: Sequence[RawCapture], root: Path, *, source: Mapping[str, str] | None = None
+) -> Receipt:
+    """Write captures as one bronze part, commit it and return its receipt.
+
+    ``source`` names where the captures came from (an archive file and its SHA-256); it is
+    recorded in the receipt's transform. A part that is already committed is returned as it
+    is, with the source of the import that landed it first.
+    """
     if not captures:
         raise ValueError("there is nothing to land")
     days = {capture.fetched_at.date() for capture in captures}
@@ -81,7 +88,7 @@ def land(captures: Sequence[RawCapture], root: Path) -> Receipt:
         part_id=part,
         inputs=(),
         outputs=(written,),
-        transform={"trustpipe": __version__},
+        transform={"trustpipe": __version__, **(source or {})},
         counters={"captures": len(captures), "payload_bytes": sum(len(c.raw) for c in captures)},
     )
     commit(root, receipt, create_only=True)
