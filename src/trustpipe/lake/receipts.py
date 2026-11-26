@@ -12,6 +12,7 @@ re-checks, and the lineage of every file is in it.
 """
 
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Self
@@ -99,3 +100,12 @@ def committed_parts(root: Path, stage: str) -> list[str]:
     if not directory.is_dir():
         return []
     return sorted(path.stem for path in directory.glob("*.json"))
+
+
+def all_receipts(root: Path) -> Iterator[Receipt]:
+    """Every committed receipt of every stage, in key order."""
+    base = root / "_receipts"
+    if not base.is_dir():
+        return
+    for path in sorted(base.glob("*/*.json")):
+        yield Receipt.from_document(json.loads(path.read_text(encoding="utf-8")))
