@@ -10,7 +10,7 @@ import dataclasses
 import json
 import time
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -24,8 +24,10 @@ from trustpipe.identity.ids import to_text
 from trustpipe.index.build import build_index
 from trustpipe.index.embed import Embedder, HashingEmbedder, TransformerEmbedder
 from trustpipe.index.search import Retriever
+from trustpipe.lake.gc import collect_garbage
 from trustpipe.lake.receipts import Receipt
 from trustpipe.lake.schema import Acquisition, TrustTier
+from trustpipe.lake.verify import verify_lake
 from trustpipe.runtime.executor import RunSummary
 from trustpipe.runtime.runlog import RunLog
 from trustpipe.silver.refine import refine_all, refine_part
@@ -87,7 +89,9 @@ def _parser() -> argparse.ArgumentParser:
         "--registry", type=Path, default=Path("config/sources.toml"), help="source registry"
     )
     everything = commands.add_parser(
-        "refine-all", help="refine every bronze part not yet refined under the registry"
+        "refine-all",
+        help="refine bronze parts not yet refined under the registry; re-judge trust only "
+        "when just the policy changed",
     )
     everything.add_argument("--registry", type=Path, default=Path("config/sources.toml"))
     everything.add_argument("--workers", type=int, default=1)
@@ -117,6 +121,20 @@ def _parser() -> argparse.ArgumentParser:
     search.add_argument("query")
     search.add_argument("--k", type=int, default=5)
     search.add_argument("--min-tier", choices=[t.value for t in TrustTier], default=None)
+
+    verify = commands.add_parser(
+        "verify", help="check every committed file against the SHA-256 in its receipt"
+    )
+    verify.add_argument("--workers", type=int, default=4, help="hashing threads")
+
+    gc = commands.add_parser("gc", help="list lake files that no receipt names")
+    gc.add_argument("--delete", action="store_true", help="remove them instead of listing")
+    gc.add_argument(
+        "--min-age-hours",
+        type=float,
+        default=1.0,
+        help="keep younger files: a running stage writes outputs before its receipt",
+    )
     return parser
 
 
@@ -197,6 +215,39 @@ def _search(args: argparse.Namespace) -> dict[str, Any]:
     return {"stage": "search", "query": args.query, "hits": [dataclasses.asdict(h) for h in hits]}
 
 
+_SAMPLE = 20  # keys printed per list; the counts are always complete
+
+
+def _verify(args: argparse.Namespace) -> dict[str, Any]:
+    report = verify_lake(args.lake, workers=args.workers)
+    return {
+        "stage": "verify",
+        "intact": report.ok,
+        "receipts": report.receipts,
+        "files": report.files,
+        "bytes": report.bytes,
+        "missing": len(report.missing),
+        "corrupt": len(report.corrupt),
+        "missing_keys": list(report.missing[:_SAMPLE]),
+        "corrupt_keys": list(report.corrupt[:_SAMPLE]),
+    }
+
+
+def _gc(args: argparse.Namespace) -> dict[str, Any]:
+    report = collect_garbage(
+        args.lake, delete=args.delete, min_age=timedelta(hours=args.min_age_hours)
+    )
+    return {
+        "stage": "gc",
+        "deleted": report.deleted,
+        "live": report.live,
+        "orphans": len(report.orphans),
+        "orphan_bytes": report.orphan_bytes,
+        "kept_young": report.kept_young,
+        "orphan_keys": list(report.orphans[:_SAMPLE]),
+    }
+
+
 def _outputs(receipt: Receipt) -> list[dict[str, Any]]:
     return [{"key": f.key, "rows": f.rows, "bytes": f.bytes} for f in receipt.outputs]
 
@@ -254,6 +305,8 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], dict[str, Any]]] = {
     "tokens": _tokens,
     "index": _index,
     "search": _search,
+    "verify": _verify,
+    "gc": _gc,
 }
 
 
@@ -263,4 +316,4 @@ def main(argv: Sequence[str] | None = None) -> int:
     report = COMMANDS[args.command](args)
     report["duration_ms"] = round((time.perf_counter() - started) * 1000, 3)
     print(json.dumps(report, ensure_ascii=False))
-    return 0
+    return 1 if report.get("intact") is False else 0
