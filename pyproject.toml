@@ -14,12 +14,12 @@ dependencies = [
     "tzdata>=2026.6 ; sys_platform == 'win32'",
 ]
 
-# Model training and neural embeddings need PyTorch. Pick exactly one build:
+# Neural embeddings for dense retrieval need PyTorch. Pick exactly one build:
 #   uv sync --extra cpu   laptops and CI (no CUDA)
 #   uv sync --extra gpu   GPU servers (CUDA 13.2 wheels)
 [project.optional-dependencies]
-cpu = ["peft>=0.22.0", "torch>=2.15.0", "transformers>=5.24.0"]
-gpu = ["peft>=0.22.0", "torch>=2.15.0", "transformers>=5.24.0"]
+cpu = ["torch>=2.15.0", "transformers>=5.24.0"]
+gpu = ["torch>=2.15.0", "transformers>=5.24.0"]
 
 [project.scripts]
 trustpipe = "trustpipe.cli:main"

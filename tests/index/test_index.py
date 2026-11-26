@@ -151,6 +151,20 @@ def test_retrieval_is_evaluated_by_recall_and_reciprocal_rank(snapshot: tuple[Pa
     assert evaluate(retriever, [], k=3).questions == 0
 
 
+def test_all_passages_of_one_source_come_back_in_document_order(
+    snapshot: tuple[Path, str],
+) -> None:
+    root, snap = snapshot
+    retriever = Retriever(build_index(root, snap, HashingEmbedder()).directory)
+    passages = retriever.passages_of("https://agency.example.org/korean")
+    assert passages
+    assert {hit.source_uri for hit in passages} == {"https://agency.example.org/korean"}
+    starts = [hit.char_start for hit in passages]
+    assert starts == sorted(starts)
+    assert all(hit.score == 0.0 and hit.cosine is None and hit.bm25 is None for hit in passages)
+    assert retriever.passages_of("https://nowhere.example.org/") == []
+
+
 def test_an_index_must_be_queried_with_its_own_embedder(snapshot: tuple[Path, str]) -> None:
     root, snap = snapshot
     built = build_index(root, snap, HashingEmbedder())
