@@ -6,6 +6,8 @@
 
 신뢰할 수 있는 데이터로만 학습하는 모델을 위한 학습 데이터 파이프라인입니다.
 
+이 데이터로 모델을 파인튜닝하고 평가하는 곳은 [scalable-trust-model](https://github.com/dango0812/scalable-trust-model)입니다.
+
 ![학습 파이프라인](./docs/figures/ko/01-pipeline.webp)
 
 ## 문서를 품질 점수로 걸러내는 학습 데이터 파이프라인과의 비교

@@ -6,6 +6,8 @@ English | [한국어](./README-ko_kr.md)
 
 A training-data pipeline for models that learn only from trustworthy data.
 
+Models are fine-tuned and evaluated on this data in [scalable-trust-model](https://github.com/dango0812/scalable-trust-model).
+
 ![Training pipeline](./docs/figures/en/01-pipeline.webp)
 
 ## Compared with a quality-score pipeline
